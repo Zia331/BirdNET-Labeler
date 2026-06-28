@@ -1,0 +1,326 @@
+/* ── Reset & base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #12121e;
+  --panel:     #1c1c30;
+  --border:    #2e2e4a;
+  --accent:    #5b8dee;
+  --accent-dk: #3a6bcc;
+  --success:   #3ecf74;
+  --warn:      #f5a623;
+  --danger:    #e05252;
+  --text:      #dde1f0;
+  --muted:     #7a80a0;
+  --radius:    6px;
+  --font-mono: 'Courier New', Courier, monospace;
+}
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', 'PingFang TC', 'Noto Sans TC', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────────────── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+#toolbar .group { display: flex; align-items: center; gap: 6px; }
+#toolbar .sep   { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+#toolbar label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+#output-path-label {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#reviewer-input {
+  width: 120px;
+}
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+#main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+#sidebar {
+  width: 270px;
+  min-width: 200px;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+  resize: horizontal;
+  overflow: hidden;
+}
+
+#sidebar h3 {
+  padding: 10px 12px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#file-list {
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+}
+
+#file-list li {
+  padding: 9px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+
+#file-list li:hover               { background: rgba(91,141,238,.12); }
+#file-list li.active              { background: rgba(91,141,238,.22); border-left: 3px solid var(--accent); }
+#file-list li.fully-labeled       { color: var(--success); }
+#file-list li .file-name          { font-size: 12px; font-weight: 500; word-break: break-all; }
+#file-list li .file-progress      { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* ── Content area ─────────────────────────────────────────────────────────── */
+#content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px;
+  gap: 12px;
+}
+
+/* ── Spectrogram ──────────────────────────────────────────────────────────── */
+#spectrogram-wrapper {
+  position: relative;
+  background: #000;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  flex: 0 0 auto;
+  height: 240px;
+  overflow: hidden;
+}
+
+#spectrogram-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#spectrogram-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+/* ── Audio controls ───────────────────────────────────────────────────────── */
+#audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+
+#audio-controls audio { flex: 1; height: 32px; }
+
+/* ── Segment panels ───────────────────────────────────────────────────────── */
+#segments-container {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  overflow-y: auto;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.segment-panel {
+  flex: 1;
+  min-width: 260px;
+  max-width: 400px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color .2s;
+}
+
+.segment-panel.confirmed {
+  border-color: var(--success);
+}
+
+.segment-panel .seg-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.segment-panel .seg-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.segment-panel .seg-status {
+  font-size: 11px;
+  color: var(--muted);
+}
+.segment-panel.confirmed .seg-status { color: var(--success); font-weight: 600; }
+
+.segment-panel .detection-info {
+  background: rgba(0,0,0,.25);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+.segment-panel .detection-info .det-label { color: var(--muted); }
+.segment-panel .detection-info .det-value { font-weight: 500; }
+.segment-panel .detection-info .det-conf  { color: var(--warn); float: right; }
+
+.segment-panel label {
+  font-size: 11px;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.segment-panel select,
+.segment-panel input[type="text"] {
+  width: 100%;
+  font-size: 12px;
+}
+
+.segment-panel .confirm-btn {
+  margin-top: 4px;
+}
+
+/* ── Buttons & inputs ─────────────────────────────────────────────────────── */
+button {
+  padding: 5px 12px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background .15s, opacity .15s;
+}
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.btn-primary { background: var(--accent);    color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-dk); }
+
+.btn-success { background: var(--success);   color: #0a1a10; }
+.btn-success:hover:not(:disabled) { filter: brightness(1.1); }
+
+.btn-secondary { background: var(--border);  color: var(--text); }
+.btn-secondary:hover:not(:disabled) { background: #3a3a58; }
+
+select, input[type="text"] {
+  background: #1a1a2e;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 4px 6px;
+  outline: none;
+  transition: border-color .15s;
+}
+select:focus, input[type="text"]:focus { border-color: var(--accent); }
+select option { background: #1a1a2e; }
+
+/* ── Status bar ───────────────────────────────────────────────────────────── */
+#status-bar {
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+}
+
+#status-right {
+  color: var(--muted); /* Optional: dull the text slightly so it isn't distracting */
+  font-size: 11px;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar              { width: 6px; height: 6px; }
+::-webkit-scrollbar-track        { background: transparent; }
+::-webkit-scrollbar-thumb        { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover  { background: #3e3e60; }
+
+/* ── Label Switch Button Group ────────────────────────────────────────────── */
+.label-switch-group {
+  display: flex;
+  background: #151525;
+  padding: 2px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.label-switch-group button.switch-btn {
+  flex: 1;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  border-radius: calc(var(--radius) - 2px);
+  transition: all .2s ease;
+}
+
+.label-switch-group button.switch-btn:hover {
+  color: var(--text);
+}
+
+.label-switch-group button.switch-btn.active[data-val="TP"] {
+  background: var(--success);
+  color: #0a1a10;
+}
+
+.label-switch-group button.switch-btn.active[data-val="FP"] {
+  background: var(--danger);
+  color: #fff;
+}
+
+.label-switch-group button.switch-btn.active[data-val="Uncertain"] {
+  background: var(--warn);
+  color: #0a1a10;
+}

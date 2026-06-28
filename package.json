@@ -1,0 +1,38 @@
+{
+  "name": "birdnet-labeler",
+  "version": "1.0.0",
+  "description": "Desktop tool for manual labeling of BirdNET audio detections",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --inspect=5858",
+    "build:win": "electron-builder --windows",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "csv-parse": "5.5.6",
+    "electron-store": "^8.2.0",
+    "exceljs": "4.4.0"
+  },
+  "devDependencies": {
+    "electron": "42.5.0",
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  },
+  "build": {
+    "appId": "com.ease.birdnet-labeler",
+    "productName": "BirdNET Labeler",
+    "win": {
+      "icon": "resources/noun-bird-1711226.png"
+    },
+    "mac": {
+      "icon": "resources/noun-bird-1711226.png"
+    },
+    "linux": {
+      "icon": "resources/noun-bird-1711226.png"
+    }
+  }
+}
