@@ -158,27 +158,32 @@ body {
 #audio-controls audio { flex: 1; height: 32px; }
 
 /* ── Segment panels ───────────────────────────────────────────────────────── */
+/* Ensure the parent container expands to fill its layout column */
 #segments-container {
   display: flex;
-  gap: 10px;
-  flex: 1;
-  overflow-y: auto;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  flex: 1;            /* Expand to fill available remaining height */
+  min-height: 0;      /* Crucial for flex children to allow overflow */
+  overflow-y: auto;   /* Enable the vertical scrollbar */
+  box-sizing: border-box;
+  padding: 8px;
+  padding-right: 12px; /* Give the scrollbar some breathing room */
 }
 
+/* Style configuration to widen your segment panel cards */
 .segment-panel {
-  flex: 1;
-  min-width: 260px;
-  max-width: 400px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  transition: border-color .2s;
+  width: 100%;          /* Fluid sizing: fills 100% of the wider #segments-container */
+  
+  /* OPTIONAL alternative: If you want a fixed wide layout rather than fluid, 
+     uncomment the line below and tune to your preferred pixel layout width: */
+  /* width: 460px; */
+
+  box-sizing: border-box;
+  padding: 16px;        /* Increases layout breathability inside the card */
+  border-radius: 6px;
+  margin-bottom: 4px;
 }
 
 .segment-panel.confirmed {
@@ -310,17 +315,22 @@ select option { background: #1a1a2e; }
   color: var(--text);
 }
 
-.label-switch-group button.switch-btn.active[data-val="TP"] {
+.label-switch-group button.switch-btn.active[data-val="True"] {
   background: var(--success);
   color: #0a1a10;
 }
 
-.label-switch-group button.switch-btn.active[data-val="FP"] {
+.label-switch-group button.switch-btn.active[data-val="False"] {
   background: var(--danger);
   color: #fff;
 }
 
 .label-switch-group button.switch-btn.active[data-val="Uncertain"] {
   background: var(--warn);
+  color: #0a1a10;
+}
+
+.label-switch-group button.switch-btn.active[data-val="Bad audio"] {
+  background: var(--muted);
   color: #0a1a10;
 }

@@ -1,42 +1,32 @@
 'use strict';
 
-/**
- * @domain entities
- *
- * A 3-second slice of an audio file. BirdNET operates on these slices;
- * a labeler must confirm or override one label per segment.
- */
 class Segment {
-  /**
-   * @param {object}         props
-   * @param {number}         props.index        - 0-based (0 = 0–3 s, 1 = 3–6 s, 2 = 6–9 s)
-   * @param {number}         props.startSeconds
-   * @param {number}         props.endSeconds
-   * @param {Detection|null} props.detection    - Best-ranked BirdNET detection for this window
-   * @param {Label|null}     props.label        - Set once the reviewer confirms
-   */
-  constructor({ index, startSeconds, endSeconds, detection = null, label = null }) {
-    this.index        = index;
-    this.startSeconds = startSeconds;
-    this.endSeconds   = endSeconds;
-    this.detection    = detection;
-    this.label        = label;  // intentionally mutable
+  constructor({ index, startSeconds, endSeconds, detection = null, allDetections = [], labels = {} }) {
+    this.index         = index;
+    this.startSeconds  = startSeconds;
+    this.endSeconds    = endSeconds;
+    this.detection     = detection;
+    this.allDetections = allDetections; 
+    
+    // ─── NEW: Store multiple labels keyed by speciesLabId ───
+    this.labels        = labels; 
   }
 
   get duration()   { return this.endSeconds - this.startSeconds; }
-  get isLabeled()  { return this.label !== null; }
   get isDetected() { return this.detection !== null; }
 
-  /**
-   * Attach a confirmed label.
-   * Uses duck-typing to avoid a circular require on Label.js.
-   * @param {Label} label
-   */
+  // ─── NEW: Only returns true if EVERY detected species has a saved label ───
+  get isLabeled() {
+    if (this.allDetections.length === 0) return Object.keys(this.labels).length > 0;
+    return this.allDetections.every(d => this.labels[d.labId] !== undefined);
+  }
+
   confirm(label) {
     if (!label || typeof label.audioFilePath !== 'string') {
       throw new Error('Segment.confirm() requires a Label-shaped object');
     }
-    this.label = label;
+    // Save to dictionary instead of overwriting a single property
+    this.labels[label.speciesLabId] = label;
   }
 }
 

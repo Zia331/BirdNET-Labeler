@@ -160,7 +160,7 @@ function registerIpcHandlers({
       speciesLabId: dto.speciesLabId,
       notes:        dto.notes    ?? '',
       reviewer:     dto.reviewer ?? '',
-      labelValue:   dto.labelValue ?? 'TP',
+      labelValue:   dto.labelValue ?? 'True',
     });
 
     return { ok: true, labelTimestamp: label.timestamp.toISOString() };
@@ -183,26 +183,42 @@ function toAudioFileDto(af) {
     filePath:          af.filePath,
     fileName:          af.fileName,
     segmentBoundaries: af.segmentBoundaries,   
-    segments: af.segments.map(s => ({
-      index:        s.index,
-      startSeconds: s.startSeconds,
-      endSeconds:   s.endSeconds,
-      isLabeled:    s.isLabeled,
-      label: s.label ? {
-        speciesLabId: s.label.speciesLabId,
-        labelValue:   s.label.labelValue,
-        notes:         s.label.notes,
-        reviewer:      s.label.reviewer,
-      } : null,
-      detection: s.detection ? {
-        ebirdCode:      s.detection.ebirdCode,
-        labId:          s.detection.labId,
-        chineseName:    s.detection.chineseName,
-        englishName:    s.detection.englishName,
-        scientificName: s.detection.scientificName,
-        confidence:     s.detection.confidence,
-      } : null,
-    })),
+    segments: af.segments.map(s => {
+      // Convert the labels map into a safe JSON object for the frontend
+      const safeLabels = {};
+      for (const [spId, lbl] of Object.entries(s.labels)) {
+        safeLabels[spId] = {
+          speciesLabId: lbl.speciesLabId,
+          labelValue:   lbl.labelValue,
+          notes:        lbl.notes,
+          reviewer:     lbl.reviewer,
+        };
+      }
+
+      return {
+        index:        s.index,
+        startSeconds: s.startSeconds,
+        endSeconds:   s.endSeconds,
+        isLabeled:    s.isLabeled, // Now strictly true ONLY if all are labeled
+        labels:       safeLabels,  // Send the dictionary
+        detection: s.detection ? {
+          ebirdCode:      s.detection.ebirdCode,
+          labId:          s.detection.labId,
+          chineseName:    s.detection.chineseName,
+          englishName:    s.detection.englishName,
+          scientificName: s.detection.scientificName,
+          confidence:     s.detection.confidence,
+        } : null,
+        allDetections: (s.allDetections || []).map(d => ({
+          ebirdCode:      d.ebirdCode,
+          labId:          d.labId,
+          chineseName:    d.chineseName,
+          englishName:    d.englishName,
+          scientificName: d.scientificName,
+          confidence:     d.confidence,
+        })),
+      };
+    }),
   };
 }
 

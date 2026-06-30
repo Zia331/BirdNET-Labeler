@@ -20,7 +20,7 @@ class Label {
    * @param {string}  props.speciesScientificName
    * @param {string}  props.detectedEBirdCode  - BirdNET's original eBird code (may differ from confirmed)
    * @param {number}  props.detectedConfidence - BirdNET confidence [0-1]
-   * @param {string}  props.labelValue         - "TP" or "FP"
+   * @param {string}  props.labelValue         - "True" or "False"
    * @param {string}  props.notes
    * @param {string}  props.reviewer
    * @param {Date}    props.timestamp
@@ -37,7 +37,7 @@ class Label {
     speciesScientificName = '',
     detectedEBirdCode = '',
     detectedConfidence = 0,
-    labelValue = 'TP',
+    labelValue = 'True',
     notes = '',
     reviewer = '',
     timestamp = new Date(),

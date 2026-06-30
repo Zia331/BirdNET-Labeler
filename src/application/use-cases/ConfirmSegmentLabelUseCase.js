@@ -6,9 +6,9 @@ const Label = require('../../domain/entities/Label');
  * @application use-cases
  *
  * Called when the reviewer clicks "Confirm" on a segment.
- *  1. Creates a Label entity from the reviewer's input.
- *  2. Mutates the segment (segment.label = label).
- *  3. Persists the label immediately to the Excel output file.
+ * 1. Creates a Label entity from the reviewer's input.
+ * 2. Mutates the segment (segment.confirm(label) saves to the labels dictionary).
+ * 3. Persists the label immediately to the Excel output file.
  *
  * The "save on every confirm" design keeps data safe even if the
  * app crashes mid-session.
@@ -31,11 +31,17 @@ class ConfirmSegmentLabelUseCase {
    * @param {string}    command.speciesLabId   - selected lab ID (may differ from detection)
    * @param {string}    [command.notes]
    * @param {string}    [command.reviewer]
-   * @param {string}    [command.labelValue]   - "TP" or "FP"
+   * @param {string}    [command.labelValue]   - "True" or "False"
    * @returns {Promise<Label>}
    */
-  async execute({ audioFile, segment, speciesLabId, notes = '', reviewer = '', labelValue = 'TP' }) {
+  async execute({ audioFile, segment, speciesLabId, notes = '', reviewer = '', labelValue = 'True' }) {
     const species = this._species.findByLabId(speciesLabId);
+
+    // ─── THE FIX: Find the specific detection for this species ───
+    // We check allDetections first. If the user manually types a completely new bird 
+    // that wasn't detected by the AI, it falls back to empty defaults.
+    const specificDetection = (segment.allDetections || []).find(d => d.labId === speciesLabId) 
+                              || (segment.detection?.labId === speciesLabId ? segment.detection : null);
 
     const label = new Label({
       audioFileName:        audioFile.fileName,
@@ -47,15 +53,18 @@ class ConfirmSegmentLabelUseCase {
       speciesChineseName:   species?.chineseName    ?? speciesLabId,
       speciesEnglishName:   species?.englishName    ?? '',
       speciesScientificName:species?.scientificName ?? '',
-      detectedEBirdCode:    segment.detection?.ebirdCode   ?? '',
-      detectedConfidence:   segment.detection?.confidence  ?? 0,
+      
+      // Pull metadata from the specific bird being labeled, not just the primary one
+      detectedEBirdCode:    specificDetection?.ebirdCode   ?? '',
+      detectedConfidence:   specificDetection?.confidence  ?? 0,
+      
       labelValue,
       notes,
       reviewer,
       timestamp: new Date(),
     });
 
-    segment.confirm(label);                // update in-memory domain state
+    segment.confirm(label);                // update in-memory domain state (adds to dictionary)
     await this._labels.save(label);        // persist immediately
 
     return label;

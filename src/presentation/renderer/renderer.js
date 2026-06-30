@@ -30,6 +30,7 @@ const $ = id => document.getElementById(id);
 const DOM = {
   toolbar:            $('toolbar'),
   fileList:           $('file-list'),
+  filenameSearch:     $('filename-search'),
   spectroCanvas:      $('spectrogram-canvas'),
   spectroPlaceholder: $('spectrogram-placeholder'),
   segmentsContainer:  $('segments-container'),
@@ -86,12 +87,15 @@ async function init() {
   DOM.reviewerInput.value = state.reviewer;
 
   // Wire toolbar buttons and sidebar filters
-  $('btn-open-csv').addEventListener('click', onOpenCsv);
+  $('btn-open-directory').addEventListener('click', onOpenDirectory);
   $('file-filter').addEventListener('change', renderFileList);
   DOM.reviewerInput.addEventListener('input', async e => {
     state.reviewer = e.target.value.trim();
     await window.electronAPI.setReviewer(state.reviewer);   // persist immediately
   });
+  if (DOM.filenameSearch) {
+    DOM.filenameSearch.addEventListener('input', renderFileList);
+  }
 
   setStatus('Ready.  Open a Folder to begin.');
 
@@ -133,8 +137,8 @@ async function init() {
 
 // ─── Toolbar actions ──────────────────────────────────────────────────────────
 
-async function onOpenCsv() {
-  $('btn-open-csv').blur();
+async function onOpenDirectory() {
+  $('btn-open-directory').blur();
   setStatus('Selecting Folder…');
 
   try {
@@ -171,6 +175,9 @@ async function onOpenCsv() {
 
 function renderFileList() {
   const filterVal = $('file-filter').value;
+  
+  const searchVal = DOM.filenameSearch ? DOM.filenameSearch.value.trim().toLowerCase() : '';
+
   DOM.fileList.innerHTML = '';
 
   const totalFiles = state.audioFiles.length;
@@ -183,10 +190,16 @@ function renderFileList() {
   $('file-stats').textContent = `Complete: ${completedFiles} / Total: ${totalFiles}`;
 
   state.audioFiles.forEach((af, idx) => {
+    // ─── NEW: Skip if filename doesn't contain the search string ───
+    if (searchVal && !af.fileName.toLowerCase().includes(searchVal)) {
+      return; 
+    }
+
     const labeled = af.segments.filter(s => s.isLabeled).length;
     const total   = af.segments.length;
     const isCompleted = labeled === total && total > 0;
 
+    // Existing completion status filters
     if (filterVal === 'incomplete' && isCompleted) return;
     if (filterVal === 'completed' && !isCompleted) return;
 
@@ -390,32 +403,79 @@ function renderSegments(af) {
 }
 
 function buildSegmentPanel(af, seg) {
+  console.log(`[UI Debug] Segment ${seg.index} data:`, seg);
+
   const panel = document.createElement('div');
-  panel.className = 'segment-panel' + (seg.isLabeled ? ' confirmed' : '');
   panel.id = `seg-panel-${seg.index}`;
-  
-  // Make it visually clear that the panel is interactive
   panel.style.cursor = 'pointer'; 
 
+  // Ensure state dictionary exists
+  seg.labels = seg.labels || {};
+
   const det = seg.detection;
-  const defaultLabId = seg.label?.speciesLabId ?? det?.labId ?? 'BACKGROUND';
+  // Determine which species is active right now in the input form view
+  const defaultLabId = det?.labId ?? 'BACKGROUND';
   const selectedSp = state.speciesOptions.find(sp => sp.labId === defaultLabId);
   const defaultDisplayValue = selectedSp ? `${selectedSp.chineseName} (${selectedSp.englishName})` : '';
+  
+  // Track metadata based on the active species selection rather than a global fallback
+  const activeLabelObj = seg.labels[defaultLabId];
+  const currentLabel = activeLabelObj?.labelValue ?? 'True';
 
-  // Cleanly determine the active label state, defaulting to 'TP' if undefined
-  const currentLabel = seg.label?.labelValue ?? 'TP';
+  const detectionsToRender = seg.allDetections && seg.allDetections.length > 0 
+    ? seg.allDetections 
+    : (det ? [det] : []);
+
+  // ─── 1. FIXED: Calculate partial completion status and inject [labeled] tags ───
+  let labeledCount = 0;
+  const allDetsHTML = detectionsToRender.map((d, i) => {
+    const displayStr = `${d.chineseName} (${d.englishName})`;
+    const isSpLabeled = !!seg.labels[d.labId];
+    if (isSpLabeled) labeledCount++;
+
+    return `
+      <div class="detection-item" 
+           data-lab-id="${d.labId}" 
+           data-display="${displayStr}"
+           style="margin-bottom: 6px; padding: 6px; background: rgba(0,0,0,0.15); border-radius: 4px; transition: background 0.2s;"
+           onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+           onmouseout="this.style.background='rgba(0,0,0,0.15)'">
+        <div style="display: flex; justify-content: space-between; align-items: center; pointer-events: none;">
+          <span class="det-value" style="font-weight: ${i === 0 ? 'bold' : 'normal'};">
+            ${i === 0 ? '👑 ' : ''}${d.chineseName || '—'}
+            ${isSpLabeled ? '<span class="labeled-badge" style="color:#4caf50; font-size:11px; margin-left:6px; font-weight:bold;">[labeled]</span>' : ''}
+          </span>
+          <span class="det-conf" style="color: ${i === 0 ? '#4caf50' : 'var(--muted)'};">
+            ${(d.confidence * 100).toFixed(1)}%
+          </span>
+        </div>
+        ${d.englishName ? `<div style="font-size:10px;color:var(--muted);margin-top:2px; pointer-events: none;">${d.englishName}  •  <em>${d.scientificName}</em></div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // ─── 2. FIXED: Strictly control segment styling & headers by total progress ───
+  const totalToLabel = detectionsToRender.length;
+  const isFullyLabeled = totalToLabel > 0 && labeledCount === totalToLabel;
+  
+  if (isFullyLabeled) {
+    panel.className = 'segment-panel confirmed';
+  } else {
+    panel.className = 'segment-panel';
+  }
+
+  let statusText = 'Pending';
+  if (isFullyLabeled) statusText = '✓ Confirmed';
+  else if (labeledCount > 0) statusText = `Partial (${labeledCount}/${totalToLabel})`;
 
   panel.innerHTML = `
     <div class="seg-header">
       <span class="seg-title">Seg ${seg.index + 1}  (${seg.startSeconds.toFixed(1)}s – ${seg.endSeconds.toFixed(1)}s)</span>
-      <span class="seg-status">${seg.isLabeled ? '✓ Confirmed' : 'Pending'}</span>
+      <span class="seg-status">${statusText}</span>
     </div>
 
-    <div class="detection-info">
-      <span class="det-label">BirdNET: </span>
-      <span class="det-value">${det ? `${det.chineseName || det.ebirdCode}` : '—'}</span>
-      ${det ? `<span class="det-conf">${(det.confidence * 100).toFixed(1)}%</span>` : ''}
-      ${det?.englishName ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${det.englishName}  •  <em>${det.scientificName}</em></div>` : ''}
+    <div class="detection-info" style="max-height: 140px; overflow-y: auto; margin-bottom: 12px; border: 1px solid #3e3e5a; border-radius: 4px; padding: 4px;">
+      ${allDetsHTML}
     </div>
 
     <div>
@@ -433,44 +493,74 @@ function buildSegmentPanel(af, seg) {
     <div>
       <label>標記分類 (Label type)</label>
       <div class="label-switch-group">
-        <button type="button" class="switch-btn ${currentLabel === 'TP' ? 'active' : ''}" data-val="TP">✓ TP</button>
-        <button type="button" class="switch-btn ${currentLabel === 'FP' ? 'active' : ''}" data-val="FP">✗ FP</button>
+        <button type="button" class="switch-btn ${currentLabel === 'True' ? 'active' : ''}" data-val="True">✓ True</button>
+        <button type="button" class="switch-btn ${currentLabel === 'False' ? 'active' : ''}" data-val="False">✗ False</button>
         <button type="button" class="switch-btn ${currentLabel === 'Uncertain' ? 'active' : ''}" data-val="Uncertain">? Uncertain</button>
+        <button type="button" class="switch-btn ${currentLabel === 'Bad audio' ? 'active' : ''}" data-val="Bad audio">✗ Bad audio</button>
       </div>
     </div>
 
     <div>
       <label>備註 (Notes)</label>
-      <input type="text" class="notes-input" placeholder="optional notes…" value="${seg.label?.notes ?? ''}">
+      <input type="text" class="notes-input" placeholder="optional notes…" value="${activeLabelObj?.notes ?? ''}">
     </div>
 
     <button class="btn-success confirm-btn" data-file="${af.id}" data-seg="${seg.index}">
-      ${seg.isLabeled ? '✓ Re-confirm' : '✓ Confirm'}
+      ${isFullyLabeled ? '✓ Re-confirm' : '✓ Confirm'}
     </button>
   `;
 
-  // ─── NEW: Auto Skip & Play Audio on Panel Click ───────────────────────────
+  // ─── Auto Skip & Play Audio on Panel Click ───────────────────────────
   panel.addEventListener('click', (e) => {
-    // Safety Guard: Don't skip/play if the user is interacting with form inputs or buttons
+    const clickedDetection = e.target.closest('.detection-item');
+    if (clickedDetection) {
+      const targetSpId = clickedDetection.dataset.labId;
+      const input = panel.querySelector('.species-input');
+      
+      // Update targeted attributes
+      input.value = clickedDetection.dataset.display;        
+      input.dataset.selectedId = targetSpId; 
+
+      // ─── 3. FIXED: Dynamically update forms when selecting species items ───
+      const targetLabelData = seg.labels[targetSpId];
+      
+      // Sync Classification buttons state
+      const targetSwitchVal = targetLabelData?.labelValue ?? 'True';
+      panel.querySelectorAll('.label-switch-group .switch-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.val === targetSwitchVal);
+      });
+
+      // Sync Notes element text
+      panel.querySelector('.notes-input').value = targetLabelData?.notes ?? '';
+    }
+
+    // Safety Guard: Don't skip/play if interacting with internal context forms
     const targetTagName = e.target.tagName.toLowerCase();
     if (targetTagName === 'input' || targetTagName === 'button' || e.target.classList.contains('switch-btn')) {
       return; 
     }
 
-    // Jump to the start segment bounds and force playback immediately
     DOM.audioElement.currentTime = seg.startSeconds;
     DOM.audioElement.play().catch(err => console.warn('Playback block:', err));
   });
 
   // ─── System Listeners ─────────────────────────────
   const input = panel.querySelector('.species-input');
+  
+  // ─── 4. FIXED: Sync forms if the user picks manually via typing datalist ───
   input.addEventListener('input', () => {
     const val = input.value.trim();
     const option = document.querySelector(`#species-list option[value="${val}"]`);
-    if (option) {
-      input.dataset.selectedId = option.dataset.id; 
-    } else {
-      input.dataset.selectedId = ""; 
+    const activeId = option ? option.dataset.id : "";
+    input.dataset.selectedId = activeId;
+
+    if (activeId) {
+      const targetLabelData = seg.labels[activeId];
+      const targetSwitchVal = targetLabelData?.labelValue ?? 'True';
+      panel.querySelectorAll('.label-switch-group .switch-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.val === targetSwitchVal);
+      });
+      panel.querySelector('.notes-input').value = targetLabelData?.notes ?? '';
     }
   });
 
@@ -518,7 +608,7 @@ async function onConfirm(af, seg, panel) {
     return;
   }
 
-  const labelValue = activeSwitch ? activeSwitch.dataset.val : 'TP';
+  const labelValue = activeSwitch ? activeSwitch.dataset.val : 'True';
   const notes      = notesEl.value.trim();
 
   btn.disabled  = true;
@@ -534,12 +624,17 @@ async function onConfirm(af, seg, panel) {
       labelValue,
     });
 
-    seg.isLabeled = true;
-    seg.label     = { speciesLabId, notes, labelValue };
+    seg.labels = seg.labels || {};
+    seg.labels[speciesLabId] = { speciesLabId, notes, labelValue };
 
-    panel.classList.add('confirmed');
-    panel.querySelector('.seg-status').textContent = '✓ Confirmed';
-    btn.textContent = '✓ Re-confirm';
+    // Update the isLabeled boolean for the frontend DTO model
+    const detectionsToRender = (seg.allDetections && seg.allDetections.length > 0) ? seg.allDetections : (seg.detection ? [seg.detection] : []);
+    const totalToLabel = detectionsToRender.length;
+    const labeledCount = detectionsToRender.filter(d => !!seg.labels[d.labId]).length;
+    seg.isLabeled = totalToLabel > 0 && labeledCount === totalToLabel;
+
+    const newPanel = buildSegmentPanel(af, seg);
+    panel.replaceWith(newPanel);
 
     renderFileList();
     

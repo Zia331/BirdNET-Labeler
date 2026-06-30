@@ -113,56 +113,75 @@ class LoadDetectionsUseCase {
 
   // ─── private (kept exactly as original) ──────────────────────────────────────
   _buildSegments(detections, filePath, existingLabels) {
-    const byIndex = new Map();
+    // ─── FIX 1: Extract fileName from filePath ───
     const fileName = path.basename(filePath);
+    
+    // 1. Group the raw detections by segment index
+    const byIndex = new Map();
+    const SEGMENT_DURATION = 3.0; 
 
-    for (const det of detections) {
-      const idx = det.segmentIndex;
-      if (!byIndex.has(idx)) {
-        byIndex.set(idx, []);
+    // ─── FIX 2: Loop over 'detections' (the passed argument) ───
+    detections.forEach(det => {
+      // NOTE: Make sure 'startSeconds' matches your parsed CSV object key!
+      // If your CSV parser uses 'beginTime' instead, change it to det.beginTime
+      const index = Math.floor(det.startSeconds / SEGMENT_DURATION); 
+      
+      if (!byIndex.has(index)) {
+        byIndex.set(index, []);
       }
-      byIndex.get(idx).push(det);
-    }
+      // Push EVERY detection for this time block into the array
+      byIndex.get(index).push(det); 
+    });
 
     const segments = [];
 
-    for (const [idx, dets] of byIndex) {
-      const best = dets.reduce((a, b) => (b.confidence > a.confidence ? b : a));
+    // 2. Build the segments from the grouped map
+    for (const [idx, dets] of byIndex.entries()) {
+      // Sort from highest confidence to lowest
+      const sortedDets = [...dets].sort((a, b) => b.confidence - a.confidence);
+      const best = sortedDets[0]; // Primary detection
       
       const segment = new Segment({
         index:        idx,
         startSeconds: idx * SEGMENT_DURATION,
         endSeconds:   (idx + 1) * SEGMENT_DURATION,
         detection:    best,
+        allDetections: sortedDets 
       });
 
+      segment.allDetections = sortedDets;
+
+      // fileName is now safely defined at the top of the function
       const key = `${fileName}_${idx}`;
-      const existing = existingLabels ? existingLabels.get(key) : null;
-      if (existing) {
+      const existingList = existingLabels ? existingLabels.get(key) : null;
+      if (existingList && existingList.length > 0) {
         const Label = require('../../domain/entities/Label');
-        const label = new Label({
-          audioFileName:         fileName,
-          audioFilePath:         filePath,
-          segmentIndex:          idx,
-          startSeconds:          idx * SEGMENT_DURATION,
-          endSeconds:            (idx + 1) * SEGMENT_DURATION,
-          speciesLabId:          existing.speciesLabId,
-          speciesChineseName:    existing.speciesChineseName,
-          speciesEnglishName:    existing.speciesEnglishName,
-          speciesScientificName: existing.speciesScientificName,
-          detectedEBirdCode:     best.ebirdCode || '',
-          detectedConfidence:    best.confidence || 0,
-          labelValue:            existing.labelValue,
-          notes:                 existing.notes,
-          reviewer:              existing.reviewer,
-          timestamp:             existing.timestamp,
+        existingList.forEach(existing => {
+          const specificDet = sortedDets.find(d => d.labId === existing.speciesLabId) || best;
+          
+          const label = new Label({
+            audioFileName:         fileName,
+            audioFilePath:         filePath,
+            segmentIndex:          idx,
+            startSeconds:          idx * SEGMENT_DURATION,
+            endSeconds:            (idx + 1) * SEGMENT_DURATION,
+            speciesLabId:          existing.speciesLabId,
+            speciesChineseName:    existing.speciesChineseName,
+            speciesEnglishName:    existing.speciesEnglishName,
+            speciesScientificName: existing.speciesScientificName,
+            detectedEBirdCode:     specificDet.ebirdCode || '',
+            detectedConfidence:    specificDet.confidence || 0,
+            labelValue:            existing.labelValue,
+            notes:                 existing.notes,
+            reviewer:              existing.reviewer,
+            timestamp:             existing.timestamp,
+          });
+          segment.confirm(label);
         });
-        segment.confirm(label);
       }
 
       segments.push(segment);
     }
-
     return segments.sort((a, b) => a.index - b.index);
   }
 }

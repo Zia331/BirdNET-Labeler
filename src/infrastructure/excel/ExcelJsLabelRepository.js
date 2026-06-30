@@ -82,7 +82,7 @@ class ExcelJsLabelRepository {
     }
 
     // 2. Scan lines using explicit numeric indices (1-based for cells)
-    const matchKey = `${label.audioFileName}_${label.segmentIndex}`;
+    const matchKey = `${label.audioFileName}_${label.segmentIndex}_${label.speciesLabId}`;
     let duplicateRowNumber = -1;
 
     worksheet.eachRow((row, rowNumber) => {
@@ -90,7 +90,8 @@ class ExcelJsLabelRepository {
       
       const rowFile = row.getCell(1).value;  
       const rowIndex = parseInt(row.getCell(2).value, 10); 
-      const currentKey = `${rowFile}_${rowIndex}`;
+      const rowSpeciesId = row.getCell(5).value;
+      const currentKey = `${rowFile}_${rowIndex}_${rowSpeciesId}`;
       
       if (currentKey === matchKey) {
         duplicateRowNumber = rowNumber;
@@ -153,13 +154,16 @@ class ExcelJsLabelRepository {
       const scientificName = row.getCell(8).value || '';
       const notes         = row.getCell(12).value || '';
       const reviewer      = row.getCell(13).value || '';
-      const labelValue    = row.getCell(11).value || 'TP';
+      const labelValue    = row.getCell(11).value || 'True';
       const timestampVal  = row.getCell(14).value;
 
       if (audioFileName && !isNaN(segmentIndex)) {
         const key = `${audioFileName}_${segmentIndex}`;
-        labels.set(key, {
-          speciesLabId: speciesLabId === '' ? null : speciesLabId,
+        if (!labels.has(key)) {
+          labels.set(key, []);
+        }
+        labels.get(key).push({
+          speciesLabId: (speciesLabId === '' || speciesLabId === null || speciesLabId === undefined) ? null : String(speciesLabId),
           speciesChineseName: chineseName,
           speciesEnglishName: englishName,
           speciesScientificName: scientificName,
