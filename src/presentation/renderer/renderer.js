@@ -85,6 +85,10 @@ async function init() {
   if (nextBtn) {
     nextBtn.addEventListener("click", onNextAudio);
   }
+  const prevBtn = $("btn-prev-audio");
+  if (prevBtn) {
+    prevBtn.addEventListener("click", onPrevAudio);
+  }
   $("file-filter").addEventListener("change", renderFileList);
   DOM.reviewerInput.addEventListener("input", async (e) => {
     state.reviewer = e.target.value.trim();
@@ -636,6 +640,12 @@ function onNextAudio() {
     state.activeFileIndex < state.audioFiles.length - 1
   ) {
     selectFile(state.activeFileIndex + 1);
+  }
+}
+
+function onPrevAudio() {
+  if (state.activeFileIndex > 0) {
+    selectFile(state.activeFileIndex - 1);
   }
 }
 
