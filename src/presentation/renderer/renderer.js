@@ -53,7 +53,7 @@ async function init() {
   // We catch it here with a clear actionable message.
   if (!window.electronAPI) {
     document.body.innerHTML =
-      '<div style="color:#e05252;padding:32px;font-family:monospace;font-size:13px">' +
+      '<div style="color:#e05252;padding:32px;font-family:monospace;font-size:16px">' +
       '<b>Fatal: window.electronAPI is undefined.</b><br><br>' +
       'The preload script did not load correctly.<br>' +
       'Common cause: <code>require()</code> of a local file inside preload.js ' +
@@ -443,13 +443,13 @@ function buildSegmentPanel(af, seg) {
         <div style="display: flex; justify-content: space-between; align-items: center; pointer-events: none;">
           <span class="det-value" style="font-weight: ${i === 0 ? 'bold' : 'normal'};">
             ${i === 0 ? '👑 ' : ''}${d.chineseName || '—'}
-            ${isSpLabeled ? '<span class="labeled-badge" style="color:#4caf50; font-size:11px; margin-left:6px; font-weight:bold;">[labeled]</span>' : ''}
+            ${isSpLabeled ? '<span class="labeled-badge" style="color:#4caf50; font-size:16px; margin-left:6px; font-weight:bold;">[labeled]</span>' : ''}
           </span>
           <span class="det-conf" style="color: ${i === 0 ? '#4caf50' : 'var(--muted)'};">
             ${(d.confidence * 100).toFixed(1)}%
           </span>
         </div>
-        ${d.englishName ? `<div style="font-size:10px;color:var(--muted);margin-top:2px; pointer-events: none;">${d.englishName}  •  <em>${d.scientificName}</em></div>` : ''}
+        ${d.englishName ? `<div style="font-size:14px;color:var(--muted);margin-top:2px; pointer-events: none;">${d.englishName}  •  <em>${d.scientificName}</em></div>` : ''}
       </div>
     `;
   }).join('');
@@ -487,7 +487,7 @@ function buildSegmentPanel(af, seg) {
              list="species-list" 
              value="${defaultDisplayValue}" 
              placeholder="Type to filter species..." 
-             style="width: 100%; padding: 6px; background: #1e1e2f; color: #c5c5d2; border: 1px solid #3e3e5a; border-radius: 4px; font-size: 13px;">
+             style="width: 100%; padding: 6px; background: #1e1e2f; color: #c5c5d2; border: 1px solid #3e3e5a; border-radius: 4px; font-size: 16px;">
     </div>
 
     <div>

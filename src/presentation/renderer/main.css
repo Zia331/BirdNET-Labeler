@@ -22,7 +22,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Segoe UI', 'PingFang TC', 'Noto Sans TC', sans-serif;
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.5;
   display: flex;
   flex-direction: column;
@@ -43,10 +43,10 @@ body {
 #toolbar .group { display: flex; align-items: center; gap: 6px; }
 #toolbar .sep   { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
 
-#toolbar label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+#toolbar label { color: var(--muted); font-size: 14px; white-space: nowrap; }
 
 #output-path-label {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   max-width: 260px;
   overflow: hidden;
@@ -81,7 +81,7 @@ body {
 
 #sidebar h3 {
   padding: 10px 12px 8px;
-  font-size: 11px;
+  font-size: 16px;
   text-transform: uppercase;
   letter-spacing: .08em;
   color: var(--muted);
@@ -105,8 +105,8 @@ body {
 #file-list li:hover               { background: rgba(91,141,238,.12); }
 #file-list li.active              { background: rgba(91,141,238,.22); border-left: 3px solid var(--accent); }
 #file-list li.fully-labeled       { color: var(--success); }
-#file-list li .file-name          { font-size: 12px; font-weight: 500; word-break: break-all; }
-#file-list li .file-progress      { font-size: 10px; color: var(--muted); margin-top: 2px; }
+#file-list li .file-name          { font-size: 14px; font-weight: 500; word-break: break-all; }
+#file-list li .file-progress      { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
 /* ── Content area ─────────────────────────────────────────────────────────── */
 #content {
@@ -142,7 +142,7 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 16px;
   pointer-events: none;
 }
 
@@ -197,13 +197,13 @@ body {
 }
 
 .segment-panel .seg-title {
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--accent);
 }
 
 .segment-panel .seg-status {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
 }
 .segment-panel.confirmed .seg-status { color: var(--success); font-weight: 600; }
@@ -212,14 +212,14 @@ body {
   background: rgba(0,0,0,.25);
   border-radius: 4px;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: 14px;
 }
 .segment-panel .detection-info .det-label { color: var(--muted); }
 .segment-panel .detection-info .det-value { font-weight: 500; }
 .segment-panel .detection-info .det-conf  { color: var(--warn); float: right; }
 
 .segment-panel label {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   display: block;
   margin-bottom: 2px;
@@ -228,7 +228,7 @@ body {
 .segment-panel select,
 .segment-panel input[type="text"] {
   width: 100%;
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .segment-panel .confirm-btn {
@@ -241,7 +241,7 @@ button {
   border: none;
   border-radius: var(--radius);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 500;
   transition: background .15s, opacity .15s;
 }
@@ -271,7 +271,7 @@ select option { background: #1a1a2e; }
 /* ── Status bar ───────────────────────────────────────────────────────────── */
 #status-bar {
   padding: 4px 12px;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   background: var(--panel);
   border-top: 1px solid var(--border);
@@ -282,7 +282,7 @@ select option { background: #1a1a2e; }
 
 #status-right {
   color: var(--muted); /* Optional: dull the text slightly so it isn't distracting */
-  font-size: 11px;
+  font-size: 14px;
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
@@ -306,7 +306,7 @@ select option { background: #1a1a2e; }
   background: transparent;
   color: var(--muted);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 16px;
   border-radius: calc(var(--radius) - 2px);
   transition: all .2s ease;
 }
