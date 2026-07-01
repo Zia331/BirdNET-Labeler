@@ -1,10 +1,10 @@
-'use strict';
+"use strict";
 
-const { ipcMain, dialog } = require('electron');
-const fs   = require('fs');
-const path = require('path');
+const { ipcMain, dialog } = require("electron");
+const fs = require("fs");
+const path = require("path");
 
-const CHANNELS = require('./channels');
+const CHANNELS = require("./channels");
 
 /**
  * @presentation ipc
@@ -17,7 +17,6 @@ function registerIpcHandlers({
   appStore,
   audioFileStore,
 }) {
-
   // ── Dialogs ──────────────────────────────────────────────────────────────────
 
   ipcMain.handle(CHANNELS.OPEN_CSV_DIALOG, async () => {
@@ -25,20 +24,22 @@ function registerIpcHandlers({
     let defaultPath;
     if (lastCsv) {
       try {
-        defaultPath = fs.statSync(lastCsv).isDirectory() ? lastCsv : path.dirname(lastCsv);
+        defaultPath = fs.statSync(lastCsv).isDirectory()
+          ? lastCsv
+          : path.dirname(lastCsv);
       } catch {
         defaultPath = undefined;
       }
     }
-    
+
     const { canceled, filePaths } = await dialog.showOpenDialog({
-      title:       'Select Folder Containing BirdNET Tables & Audio',
+      title: "Select Folder Containing BirdNET Tables & Audio",
       defaultPath,
-      properties:  ['openDirectory'],
+      properties: ["openDirectory"],
     });
-    
+
     if (canceled || filePaths.length === 0) return null;
-    
+
     const baseDir = filePaths[0];
     appStore.setLastCsvPath(baseDir);
     appStore.setLastAudioPath(baseDir);
@@ -46,7 +47,7 @@ function registerIpcHandlers({
     // Return the folder path as the csvPath item so the UseCase knows where to scan
     return {
       csvPath: baseDir,
-      audioBasePath: baseDir
+      audioBasePath: baseDir,
     };
   });
 
@@ -54,9 +55,9 @@ function registerIpcHandlers({
   ipcMain.handle(CHANNELS.OPEN_AUDIO_DIALOG, async () => {
     const lastAudio = appStore.getLastAudioPath();
     const { canceled, filePaths } = await dialog.showOpenDialog({
-      title:       'Select Audio Directory',
+      title: "Select Audio Directory",
       defaultPath: lastAudio ?? undefined,
-      properties:  ['openDirectory'],
+      properties: ["openDirectory"],
     });
     if (canceled) return null;
     appStore.setLastAudioPath(filePaths[0]);
@@ -66,9 +67,9 @@ function registerIpcHandlers({
   ipcMain.handle(CHANNELS.OPEN_EXCEL_DIALOG, async () => {
     const current = appStore.getOutputPath();
     const { canceled, filePath } = await dialog.showSaveDialog({
-      title:       'Set Output Excel File',
-      defaultPath: current ?? 'labels.xlsx',
-      filters:     [{ name: 'Excel Workbook', extensions: ['xlsx'] }],
+      title: "Set Output Excel File",
+      defaultPath: current ?? "labels.xlsx",
+      filters: [{ name: "Excel Workbook", extensions: ["xlsx"] }],
     });
     return canceled ? null : filePath;
   });
@@ -82,13 +83,19 @@ function registerIpcHandlers({
     if (!csvPath) throw new Error("Missing csvPath parameter.");
 
     const stat = fs.statSync(csvPath);
-    let folderName = stat.isDirectory() ? path.basename(csvPath) : path.basename(path.dirname(csvPath));
+    let folderName = stat.isDirectory()
+      ? path.basename(csvPath)
+      : path.basename(path.dirname(csvPath));
     const parentDir = stat.isDirectory() ? csvPath : path.dirname(csvPath);
     const excelPath = path.join(parentDir, `labeled_${folderName}.xlsx`);
 
     labelRepository.setOutputPath(excelPath);
 
-    const audioFiles = await loadDetectionsUseCase.execute({ csvPath, audioBasePath, excelPath });
+    const audioFiles = await loadDetectionsUseCase.execute({
+      csvPath,
+      audioBasePath,
+      excelPath,
+    });
 
     audioFileStore.clear();
     for (const af of audioFiles) audioFileStore.set(af.id, af);
@@ -101,34 +108,35 @@ function registerIpcHandlers({
   ipcMain.handle(CHANNELS.READ_AUDIO, async (_e, payload) => {
     // Destructure the audioPath out of the object sent by preload.js
     const { audioPath } = payload || {};
-    
+
     if (!audioPath) throw new Error("Missing audioPath parameter.");
 
     const buf = fs.readFileSync(audioPath);
-    const ab  = new ArrayBuffer(buf.byteLength);
-    new Uint8Array(ab).set(buf);         
+    const ab = new ArrayBuffer(buf.byteLength);
+    new Uint8Array(ab).set(buf);
     return ab;
   });
 
   // ── Species ───────────────────────────────────────────────────────────────────
 
   ipcMain.handle(CHANNELS.GET_ALL_SPECIES, () =>
-    speciesRepository.findAll().map(s => ({
-      labId:          s.labId,
-      chineseName:    s.chineseName,
-      englishName:    s.englishName,
+    speciesRepository.findAll().map((s) => ({
+      labId: s.labId,
+      chineseName: s.chineseName,
+      englishName: s.englishName,
       scientificName: s.scientificName,
-      ebirdCode:      s.ebirdCode,
-      displayLabel:   s.displayLabel,
-    }))
+      ebirdCode: s.ebirdCode,
+      displayLabel: s.displayLabel,
+    })),
   );
 
   // ── Labels ────────────────────────────────────────────────────────────────────
 
   ipcMain.handle(CHANNELS.SET_OUTPUT_PATH, (_e, args) => {
-    const filePath = (typeof args === 'object' && args !== null) ? args.filePath : args;
+    const filePath =
+      typeof args === "object" && args !== null ? args.filePath : args;
     labelRepository.setOutputPath(filePath);
-    appStore.setOutputPath(filePath);   
+    appStore.setOutputPath(filePath);
     return { ok: true };
   });
 
@@ -145,22 +153,24 @@ function registerIpcHandlers({
     if (!audioFile) {
       throw new Error(
         `AudioFile not found in session store: ${dto.audioFilePath}\n` +
-        `Make sure the CSV was loaded before confirming labels.`
+          `Make sure the CSV was loaded before confirming labels.`,
       );
     }
 
     const segment = audioFile.segmentAt(dto.segmentIndex);
     if (!segment) {
-      throw new Error(`Segment ${dto.segmentIndex} not found in ${audioFile.fileName}`);
+      throw new Error(
+        `Segment ${dto.segmentIndex} not found in ${audioFile.fileName}`,
+      );
     }
 
     const label = await confirmSegmentLabelUseCase.execute({
       audioFile,
       segment,
       speciesLabId: dto.speciesLabId,
-      notes:        dto.notes    ?? '',
-      reviewer:     dto.reviewer ?? '',
-      labelValue:   dto.labelValue ?? 'True',
+      notes: dto.notes ?? "",
+      reviewer: dto.reviewer ?? "",
+      labelValue: dto.labelValue ?? "True",
     });
 
     return { ok: true, labelTimestamp: label.timestamp.toISOString() };
@@ -171,7 +181,7 @@ function registerIpcHandlers({
   ipcMain.handle(CHANNELS.GET_REVIEWER, () => appStore.getReviewer());
 
   ipcMain.handle(CHANNELS.SET_REVIEWER, (_e, args) => {
-    const name = (typeof args === 'object' && args !== null) ? args.name : args;
+    const name = typeof args === "object" && args !== null ? args.name : args;
     appStore.setReviewer(name);
     return { ok: true };
   });
@@ -179,43 +189,46 @@ function registerIpcHandlers({
 
 function toAudioFileDto(af) {
   return {
-    id:                af.id,
-    filePath:          af.filePath,
-    fileName:          af.fileName,
-    segmentBoundaries: af.segmentBoundaries,   
-    segments: af.segments.map(s => {
+    id: af.id,
+    filePath: af.filePath,
+    fileName: af.fileName,
+    segmentBoundaries: af.segmentBoundaries,
+    metadata: af.metadata || { siteCode: "", siteName: "", recordedTime: "" },
+    segments: af.segments.map((s) => {
       // Convert the labels map into a safe JSON object for the frontend
       const safeLabels = {};
       for (const [spId, lbl] of Object.entries(s.labels)) {
         safeLabels[spId] = {
           speciesLabId: lbl.speciesLabId,
-          labelValue:   lbl.labelValue,
-          notes:        lbl.notes,
-          reviewer:     lbl.reviewer,
+          labelValue: lbl.labelValue,
+          notes: lbl.notes,
+          reviewer: lbl.reviewer,
         };
       }
 
       return {
-        index:        s.index,
+        index: s.index,
         startSeconds: s.startSeconds,
-        endSeconds:   s.endSeconds,
-        isLabeled:    s.isLabeled, // Now strictly true ONLY if all are labeled
-        labels:       safeLabels,  // Send the dictionary
-        detection: s.detection ? {
-          ebirdCode:      s.detection.ebirdCode,
-          labId:          s.detection.labId,
-          chineseName:    s.detection.chineseName,
-          englishName:    s.detection.englishName,
-          scientificName: s.detection.scientificName,
-          confidence:     s.detection.confidence,
-        } : null,
-        allDetections: (s.allDetections || []).map(d => ({
-          ebirdCode:      d.ebirdCode,
-          labId:          d.labId,
-          chineseName:    d.chineseName,
-          englishName:    d.englishName,
+        endSeconds: s.endSeconds,
+        isLabeled: s.isLabeled, // Now strictly true ONLY if all are labeled
+        labels: safeLabels, // Send the dictionary
+        detection: s.detection
+          ? {
+              ebirdCode: s.detection.ebirdCode,
+              labId: s.detection.labId,
+              chineseName: s.detection.chineseName,
+              englishName: s.detection.englishName,
+              scientificName: s.detection.scientificName,
+              confidence: s.detection.confidence,
+            }
+          : null,
+        allDetections: (s.allDetections || []).map((d) => ({
+          ebirdCode: d.ebirdCode,
+          labId: d.labId,
+          chineseName: d.chineseName,
+          englishName: d.englishName,
           scientificName: d.scientificName,
-          confidence:     d.confidence,
+          confidence: d.confidence,
         })),
       };
     }),

@@ -1,82 +1,135 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline';">
-  <title>BirdNET Labeler</title>
-  <link rel="stylesheet" href="main.css">
-</head>
-<body>
-
-  <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
-  <div id="toolbar">
-
-    <div class="group">
-      <button id="btn-open-directory" class="btn-primary">📂 Open Folder</button>
-    </div>
-
-    <div class="sep"></div>
-
-    <div class="group">
-      <label for="reviewer-input">標記者 Reviewer:</label>
-      <input id="reviewer-input" type="text" placeholder="your name" style="width:120px">
-    </div>
-
-  </div>
-
-  <!-- ── Main layout ─────────────────────────────────────────────────────── -->
-  <div id="main-layout">
-
-    <!-- Sidebar: audio file list -->
-    <nav id="sidebar">
-      <h3>Audio Files</h3>
-      <div id="file-stats" style="font-size: 14px; padding: 8px; color: var(--muted);">Complete: 0 / Total: 0</div>
-      <div style="margin-bottom: 12px;">
-        <select id="file-filter" style="width: 100%; padding: 6px; background: #1e1e2f; color: #c5c5d2; border: 1px solid #3e3e5a; border-radius: 4px; font-size: 14px; cursor: pointer;">
-          <option value="all">Show All</option>
-          <option value="incomplete">Show Incomplete</option>
-          <option value="completed">Show Completed</option>
-        </select>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline';"
+    />
+    <title>BirdNET Labeler</title>
+    <link rel="stylesheet" href="main.css" />
+  </head>
+  <body>
+    <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
+    <div id="toolbar">
+      <div class="group">
+        <button id="btn-open-directory" class="btn-primary">
+          📂 Open Folder
+        </button>
       </div>
-      <input type="text" id="filename-search" placeholder="Search filenames..." style="width: 100%; padding: 6px; margin-bottom: 10px; background: #1e1e2f; color: #c5c5d2; border: 1px solid #3e3e5a; border-radius: 4px;">
-      <ul id="file-list"></ul>
-    </nav>
 
-    <!-- Content: spectrogram + controls + segment panels -->
-    <main id="content">
+      <div class="sep"></div>
 
-      <!-- Spectrogram canvas -->
-      <div id="spectrogram-wrapper">
-        <canvas id="spectrogram-canvas"></canvas>
-        <div id="spectrogram-placeholder">
-          Open a BirdNET CSV to visualise audio and begin labelling.
+      <div class="group">
+        <label for="reviewer-input">標記者 Reviewer:</label>
+        <input
+          id="reviewer-input"
+          type="text"
+          placeholder="your name"
+          style="width: 120px"
+        />
+      </div>
+    </div>
+
+    <!-- ── Main layout ─────────────────────────────────────────────────────── -->
+    <div id="main-layout">
+      <!-- Sidebar: audio file list -->
+      <nav id="sidebar">
+        <h3>Audio Files</h3>
+        <div
+          id="file-stats"
+          style="font-size: 14px; padding: 8px; color: var(--muted)"
+        >
+          Complete: 0 / Total: 0
         </div>
-      </div>
+        <div style="margin-bottom: 12px">
+          <select
+            id="file-filter"
+            style="
+              width: 100%;
+              padding: 6px;
+              background: #1e1e2f;
+              color: #c5c5d2;
+              border: 1px solid #3e3e5a;
+              border-radius: 4px;
+              font-size: 14px;
+              cursor: pointer;
+            "
+          >
+            <option value="all">Show All</option>
+            <option value="incomplete">Show Incomplete</option>
+            <option value="completed">Show Completed</option>
+          </select>
+        </div>
+        <input
+          type="text"
+          id="filename-search"
+          placeholder="Search filenames..."
+          style="
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 10px;
+            background: #1e1e2f;
+            color: #c5c5d2;
+            border: 1px solid #3e3e5a;
+            border-radius: 4px;
+          "
+        />
+        <ul id="file-list"></ul>
+      </nav>
 
-      <!-- Native audio player for playback (separate from spectrogram rendering) -->
-      <div id="audio-controls">
-        <audio id="audio-player" controls preload="auto" style="width:100%"></audio>
-      </div>
+      <!-- Content: spectrogram + controls + segment panels -->
+      <main id="content">
+        <!-- Spectrogram canvas -->
+        <div id="spectrogram-wrapper">
+          <canvas id="spectrogram-canvas"></canvas>
+          <div id="spectrogram-placeholder">
+            Open a BirdNET CSV to visualise audio and begin labelling.
+          </div>
+        </div>
 
-      <!-- One panel per detected 3-second segment -->
-      <div id="segments-container"></div>
+        <!-- Native audio player for playback (separate from spectrogram rendering) -->
+        <div id="audio-controls">
+          <audio id="audio-player" controls preload="auto"></audio>
+        </div>
+        <div
+          id="spectrogram-metadata"
+          class="spectrogram-metadata"
+          aria-live="polite"
+        ></div>
 
-    </main>
-  </div>
+        <!-- One panel per detected 3-second segment -->
+        <div id="segments-container"></div>
 
-  <!-- ── Status bar ──────────────────────────────────────────────────────── -->
-  <div id="status-bar">
-    <span id="status-left">Ready.</span>
-    <span id="status-right"></span>
-  </div>
+        <div
+          style="
+            display: flex;
+            justify-content: flex-end;
+            align-items: flex-end;
+          "
+        >
+          <button
+            id="btn-next-audio"
+            class="btn-primary"
+            style="width: 140px; height: 36px"
+          >
+            Next Audio ➡️
+          </button>
+        </div>
+      </main>
+    </div>
 
-  <!--
+    <!-- ── Status bar ──────────────────────────────────────────────────────── -->
+    <div id="status-bar">
+      <span id="status-left">Ready.</span>
+      <span id="status-right"></span>
+    </div>
+
+    <!--
     renderer.js is an ES-module so it can `import` SpectrogramRenderer and fft.
     Electron's renderer runs in Chromium which fully supports ES modules via
     type="module" with file:// URLs.
   -->
-  <script type="module" src="renderer.js"></script>
-
-</body>
+    <script type="module" src="renderer.js"></script>
+  </body>
 </html>

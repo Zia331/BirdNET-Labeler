@@ -8,43 +8,45 @@
  * currently active.  The heavy domain logic lives in the main process.
  */
 
-import { SpectrogramRenderer } from './SpectrogramRenderer.js';
+import { SpectrogramRenderer } from "./SpectrogramRenderer.js";
 
 // ─── App state ────────────────────────────────────────────────────────────────
 
 const state = {
-  audioFiles:      [],     // AudioFileDto[]
+  audioFiles: [], // AudioFileDto[]
   activeFileIndex: -1,
-  speciesOptions:  [],     // SpeciesDto[]
-  reviewer:        '',
-  outputPath:      null,
-  specRenderer:    null,
-  audioContext:    null,
-  currentAudioBuffer: null
+  speciesOptions: [], // SpeciesDto[]
+  reviewer: "",
+  outputPath: null,
+  specRenderer: null,
+  audioContext: null,
+  currentAudioBuffer: null,
 };
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
-const $ = id => document.getElementById(id);
+const $ = (id) => document.getElementById(id);
 
 const DOM = {
-  toolbar:            $('toolbar'),
-  fileList:           $('file-list'),
-  filenameSearch:     $('filename-search'),
-  spectroCanvas:      $('spectrogram-canvas'),
-  spectroPlaceholder: $('spectrogram-placeholder'),
-  segmentsContainer:  $('segments-container'),
-  audioElement:       $('audio-player'),
-  statusLeft:         $('status-left'),
-  statusRight:        $('status-right'),
-  reviewerInput:      $('reviewer-input'),
+  toolbar: $("toolbar"),
+  fileList: $("file-list"),
+  filenameSearch: $("filename-search"),
+  spectroCanvas: $("spectrogram-canvas"),
+  spectroPlaceholder: $("spectrogram-placeholder"),
+  spectroMetadata: $("spectrogram-metadata"),
+  segmentsContainer: $("segments-container"),
+  audioElement: $("audio-player"),
+  statusLeft: $("status-left"),
+  statusRight: $("status-right"),
+  reviewerInput: $("reviewer-input"),
 };
 
 // ─── Initialise ───────────────────────────────────────────────────────────────
 
 let globalCursorAnimationId = null;
-let spectrogramBackupCanvas = null; 
-let isTrackingLoopRunning = false;   // Strict lock flag to prevent duplicate threads
+let spectrogramBackupCanvas = null;
+let isTrackingLoopRunning = false; // Strict lock flag to prevent duplicate threads
+let lastActiveSegmentIndex = -1;
 
 async function init() {
   // Guard: if preload.js failed to load (e.g. sandbox + local require bug),
@@ -54,12 +56,12 @@ async function init() {
   if (!window.electronAPI) {
     document.body.innerHTML =
       '<div style="color:#e05252;padding:32px;font-family:monospace;font-size:16px">' +
-      '<b>Fatal: window.electronAPI is undefined.</b><br><br>' +
-      'The preload script did not load correctly.<br>' +
-      'Common cause: <code>require()</code> of a local file inside preload.js ' +
-      'fails in Electron 20+ sandboxed context.<br><br>' +
-      'Fix: open preload.js and make sure it only uses built-in Node/Electron modules.' +
-      '</div>';
+      "<b>Fatal: window.electronAPI is undefined.</b><br><br>" +
+      "The preload script did not load correctly.<br>" +
+      "Common cause: <code>require()</code> of a local file inside preload.js " +
+      "fails in Electron 20+ sandboxed context.<br><br>" +
+      "Fix: open preload.js and make sure it only uses built-in Node/Electron modules." +
+      "</div>";
     return;
   }
 
@@ -72,45 +74,41 @@ async function init() {
     window.electronAPI.getAllSpecies(),
   ]);
 
-  state.reviewer       = savedReviewer;
+  state.reviewer = savedReviewer;
   state.speciesOptions = allSpecies;
-
-  // Populate global datalist for species filtering
-  const datalist = document.createElement('datalist');
-  datalist.id = 'species-list';
-  datalist.innerHTML = state.speciesOptions.map(sp => {
-    const readableName = `${sp.chineseName} (${sp.englishName})`;
-    return `<option value="${readableName}" data-id="${sp.labId}"></option>`;
-  }).join('');
-  document.body.appendChild(datalist);
 
   DOM.reviewerInput.value = state.reviewer;
 
   // Wire toolbar buttons and sidebar filters
-  $('btn-open-directory').addEventListener('click', onOpenDirectory);
-  $('file-filter').addEventListener('change', renderFileList);
-  DOM.reviewerInput.addEventListener('input', async e => {
+  $("btn-open-directory").addEventListener("click", onOpenDirectory);
+  const nextBtn = $("btn-next-audio");
+  if (nextBtn) {
+    nextBtn.addEventListener("click", onNextAudio);
+  }
+  $("file-filter").addEventListener("change", renderFileList);
+  DOM.reviewerInput.addEventListener("input", async (e) => {
     state.reviewer = e.target.value.trim();
-    await window.electronAPI.setReviewer(state.reviewer);   // persist immediately
+    await window.electronAPI.setReviewer(state.reviewer); // persist immediately
   });
   if (DOM.filenameSearch) {
-    DOM.filenameSearch.addEventListener('input', renderFileList);
+    DOM.filenameSearch.addEventListener("input", renderFileList);
   }
 
-  setStatus('Ready.  Open a Folder to begin.');
+  setStatus("Ready.  Open a Folder to begin.");
 
-  DOM.statusRight.textContent = '© Eco-Acoustics and Spatial Ecology (EASE) Lab, Biodiversity Research Center, Academia Sinica in Taipei, Taiwan';
+  DOM.statusRight.textContent =
+    "© Eco-Acoustics and Spatial Ecology (EASE) Lab, Biodiversity Research Center, Academia Sinica in Taipei, Taiwan";
 
   // Wire audio playback state directly into the cursor tracking animation loop
   // Trigger cursor loop when music starts
-  DOM.audioElement.addEventListener('play', () => {
+  DOM.audioElement.addEventListener("play", () => {
     if (!isTrackingLoopRunning) {
       startCursorTracking();
     }
   });
 
   // Handle seeking cleanly (scrubbing while playing or paused)
-  DOM.audioElement.addEventListener('seeked', () => {
+  DOM.audioElement.addEventListener("seeked", () => {
     // If the loop isn't running, run a single visual refresh frame to update the line position
     if (!isTrackingLoopRunning) {
       startCursorTracking();
@@ -126,7 +124,7 @@ async function init() {
   });
 
   // Explicit stop lock on pause events
-  DOM.audioElement.addEventListener('pause', () => {
+  DOM.audioElement.addEventListener("pause", () => {
     if (globalCursorAnimationId) {
       cancelAnimationFrame(globalCursorAnimationId);
       globalCursorAnimationId = null;
@@ -138,29 +136,34 @@ async function init() {
 // ─── Toolbar actions ──────────────────────────────────────────────────────────
 
 async function onOpenDirectory() {
-  $('btn-open-directory').blur();
-  setStatus('Selecting Folder…');
+  $("btn-open-directory").blur();
+  setStatus("Selecting Folder…");
 
   try {
-    const result = await window.electronAPI.openCsvDialog(); 
+    const result = await window.electronAPI.openCsvDialog();
     if (!result || !result.csvPath) {
-      setStatus('Open cancelled.');
+      setStatus("Open cancelled.");
       return;
     }
 
     const { csvPath, audioBasePath } = result;
-    setStatus('Loading detections…');
+    setStatus("Loading detections…");
 
     // Pass them as two separate arguments here! Preload will handle the rest.
-    state.audioFiles = await window.electronAPI.loadDetections(csvPath, audioBasePath);
+    state.audioFiles = await window.electronAPI.loadDetections(
+      csvPath,
+      audioBasePath,
+    );
     state.activeFileIndex = -1;
 
     renderFileList();
     clearSpectrogram();
     clearSegments();
 
-    const folderName = csvPath.replace(/\/+$/, '').split('/').pop();
-    setStatus(`Loaded ${state.audioFiles.length} file(s)  •  Output → labeled_${folderName}.xlsx`);
+    const folderName = csvPath.replace(/\/+$/, "").split("/").pop();
+    setStatus(
+      `Loaded ${state.audioFiles.length} file(s)  •  Output → labeled_${folderName}.xlsx`,
+    );
 
     if (state.audioFiles.length > 0) {
       setTimeout(() => selectFile(0), 50);
@@ -174,45 +177,48 @@ async function onOpenDirectory() {
 // ─── File list ────────────────────────────────────────────────────────────────
 
 function renderFileList() {
-  const filterVal = $('file-filter').value;
-  
-  const searchVal = DOM.filenameSearch ? DOM.filenameSearch.value.trim().toLowerCase() : '';
+  const filterVal = $("file-filter").value;
 
-  DOM.fileList.innerHTML = '';
+  const searchVal = DOM.filenameSearch
+    ? DOM.filenameSearch.value.trim().toLowerCase()
+    : "";
+
+  DOM.fileList.innerHTML = "";
 
   const totalFiles = state.audioFiles.length;
-  const completedFiles = state.audioFiles.filter(af => {
-    const labeled = af.segments.filter(s => s.isLabeled).length;
-    const total   = af.segments.length;
+  const completedFiles = state.audioFiles.filter((af) => {
+    const labeled = af.segments.filter((s) => s.isLabeled).length;
+    const total = af.segments.length;
     return labeled === total && total > 0;
   }).length;
 
-  $('file-stats').textContent = `Complete: ${completedFiles} / Total: ${totalFiles}`;
+  $("file-stats").textContent =
+    `Complete: ${completedFiles} / Total: ${totalFiles}`;
 
   state.audioFiles.forEach((af, idx) => {
     // ─── NEW: Skip if filename doesn't contain the search string ───
     if (searchVal && !af.fileName.toLowerCase().includes(searchVal)) {
-      return; 
+      return;
     }
 
-    const labeled = af.segments.filter(s => s.isLabeled).length;
-    const total   = af.segments.length;
+    const labeled = af.segments.filter((s) => s.isLabeled).length;
+    const total = af.segments.length;
     const isCompleted = labeled === total && total > 0;
 
     // Existing completion status filters
-    if (filterVal === 'incomplete' && isCompleted) return;
-    if (filterVal === 'completed' && !isCompleted) return;
+    if (filterVal === "incomplete" && isCompleted) return;
+    if (filterVal === "completed" && !isCompleted) return;
 
-    const li = document.createElement('li');
+    const li = document.createElement("li");
     li.dataset.index = idx;
-    if (isCompleted) li.classList.add('fully-labeled');
-    if (state.activeFileIndex === idx) li.classList.add('active');
+    if (isCompleted) li.classList.add("fully-labeled");
+    if (state.activeFileIndex === idx) li.classList.add("active");
 
     li.innerHTML = `
       <div class="file-name">${af.fileName}</div>
       <div class="file-progress">${labeled}/${total} segments labeled</div>
     `;
-    li.addEventListener('click', () => selectFile(idx));
+    li.addEventListener("click", () => selectFile(idx));
     DOM.fileList.appendChild(li);
   });
 }
@@ -222,27 +228,29 @@ function renderFileList() {
 // Function to generate a valid, un-fragmented WAV header for Chromium
 function bufferToWavBlob(buffer) {
   let numOfChan = buffer.numberOfChannels,
-      length = buffer.length * numOfChan * 2 + 44,
-      bufferArr = new ArrayBuffer(length),
-      view = new DataView(bufferArr),
-      channels = [], i, sample,
-      offset = 0,
-      pos = 0;
+    length = buffer.length * numOfChan * 2 + 44,
+    bufferArr = new ArrayBuffer(length),
+    view = new DataView(bufferArr),
+    channels = [],
+    i,
+    sample,
+    offset = 0,
+    pos = 0;
 
   // Write WAV Header descriptors
-  setUint32(0x46464952);                         // "RIFF"
-  setUint32(length - 8);                         // file length - 8
-  setUint32(0x45564157);                         // "WAVE"
-  setUint32(0x20746d66);                         // "fmt " chunk
-  setUint32(16);                                 // chunk length
-  setUint16(1);                                  // sample format (raw PCM)
+  setUint32(0x46464952); // "RIFF"
+  setUint32(length - 8); // file length - 8
+  setUint32(0x45564157); // "WAVE"
+  setUint32(0x20746d66); // "fmt " chunk
+  setUint32(16); // chunk length
+  setUint16(1); // sample format (raw PCM)
   setUint16(numOfChan);
   setUint32(buffer.sampleRate);
-  setUint32(buffer.sampleRate * 2 * numOfChan);  // byte rate
-  setUint16(numOfChan * 2);                      // block align
-  setUint16(16);                                 // bits per sample
-  setUint32(0x61746164);                         // "data" chunk
-  setUint32(length - pos - 4);                   // chunk length
+  setUint32(buffer.sampleRate * 2 * numOfChan); // byte rate
+  setUint16(numOfChan * 2); // block align
+  setUint16(16); // bits per sample
+  setUint32(0x61746164); // "data" chunk
+  setUint32(length - pos - 4); // chunk length
 
   for (i = 0; i < buffer.numberOfChannels; i++) {
     channels.push(buffer.getChannelData(i));
@@ -251,17 +259,23 @@ function bufferToWavBlob(buffer) {
   while (pos < length) {
     for (i = 0; i < numOfChan; i++) {
       sample = Math.max(-1, Math.min(1, channels[i][offset]));
-      sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      sample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
       view.setInt16(pos, sample, true);
       pos += 2;
     }
     offset++;
   }
 
-  return new Blob([bufferArr], { type: 'audio/wav' });
+  return new Blob([bufferArr], { type: "audio/wav" });
 
-  function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
-  function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+  function setUint16(data) {
+    view.setUint16(pos, data, true);
+    pos += 2;
+  }
+  function setUint32(data) {
+    view.setUint32(pos, data, true);
+    pos += 4;
+  }
 }
 
 async function selectFile(idx) {
@@ -273,8 +287,9 @@ async function selectFile(idx) {
   clearSpectrogram();
   setStatus(`Decoding Audio Stream: ${af.fileName}…`);
 
-  spectrogramBackupCanvas = null; 
+  spectrogramBackupCanvas = null;
   isTrackingLoopRunning = false;
+  lastActiveSegmentIndex = -1;
   if (globalCursorAnimationId) cancelAnimationFrame(globalCursorAnimationId);
 
   try {
@@ -284,7 +299,7 @@ async function selectFile(idx) {
     af.durationSeconds = audioBuffer.duration;
 
     // Clean up old references to avoid RAM bloat
-    if (DOM.audioElement.src && DOM.audioElement.src.startsWith('blob:')) {
+    if (DOM.audioElement.src && DOM.audioElement.src.startsWith("blob:")) {
       URL.revokeObjectURL(DOM.audioElement.src);
     }
 
@@ -292,14 +307,20 @@ async function selectFile(idx) {
     // This stops Range-Request errors because the PCM data stream is locally structured
     const clearWavBlob = bufferToWavBlob(audioBuffer);
     DOM.audioElement.src = URL.createObjectURL(clearWavBlob);
-    DOM.audioElement.load(); 
+    DOM.audioElement.load();
 
     // Render the high-definition spectrogram
-    state.specRenderer.render(audioBuffer, af.segmentBoundaries ?? computeBoundaries(af));
-    DOM.spectroPlaceholder.style.display = 'none';
+    state.specRenderer.render(
+      audioBuffer,
+      af.segmentBoundaries ?? computeBoundaries(af),
+    );
+    DOM.spectroPlaceholder.style.display = "none";
+    updateMetadataDisplay(af);
 
     renderSegments(af);
-    setStatus(`${af.fileName}  •  ${audioBuffer.duration.toFixed(2)} s  •  ${audioBuffer.sampleRate} Hz`);
+    setStatus(
+      `${af.fileName}  •  ${audioBuffer.duration.toFixed(2)} s  •  ${audioBuffer.sampleRate} Hz`,
+    );
   } catch (err) {
     setStatus(`Playback pipeline configuration failed: ${err.message}`, true);
     console.error(err);
@@ -308,15 +329,63 @@ async function selectFile(idx) {
 
 function computeBoundaries(af) {
   // Fallback if DTO doesn't carry segmentBoundaries
-  return af.segments.slice(1).map(s => s.startSeconds);
+  return af.segments.slice(1).map((s) => s.startSeconds);
 }
 
 // ─── Spectrogram helpers ──────────────────────────────────────────────────────
 
 function clearSpectrogram() {
-  const ctx = DOM.spectroCanvas.getContext('2d');
+  const ctx = DOM.spectroCanvas.getContext("2d");
   ctx.clearRect(0, 0, DOM.spectroCanvas.width, DOM.spectroCanvas.height);
-  DOM.spectroPlaceholder.style.display = 'flex';
+  DOM.spectroPlaceholder.style.display = "flex";
+  updateMetadataDisplay(null);
+}
+
+function updateMetadataDisplay(af) {
+  if (!DOM.spectroMetadata) return;
+
+  DOM.spectroMetadata.innerHTML = "";
+  DOM.spectroMetadata.style.display = "none";
+
+  if (!af?.metadata) return;
+
+  const { siteCode = "", siteName = "", recordedTime = "" } = af.metadata;
+  const items = [];
+
+  if (siteName) {
+    const siteValue =
+      siteCode && siteCode !== siteName
+        ? `${siteName} (${siteCode})`
+        : siteName;
+    items.push({ label: "Site", value: siteValue });
+  } else if (siteCode) {
+    items.push({ label: "Site", value: siteCode });
+  }
+
+  if (recordedTime) {
+    items.push({ label: "Time", value: recordedTime });
+  }
+
+  if (items.length === 0) return;
+
+  const fragment = document.createDocumentFragment();
+  items.forEach(({ label, value }) => {
+    const item = document.createElement("span");
+    item.className = "meta-item";
+
+    const labelEl = document.createElement("strong");
+    labelEl.textContent = `${label}:`;
+
+    const valueEl = document.createElement("span");
+    valueEl.textContent = value;
+
+    item.appendChild(labelEl);
+    item.appendChild(valueEl);
+    fragment.appendChild(item);
+  });
+
+  DOM.spectroMetadata.appendChild(fragment);
+  DOM.spectroMetadata.style.display = "flex";
 }
 
 function startCursorTracking() {
@@ -327,15 +396,15 @@ function startCursorTracking() {
   }
 
   const canvas = DOM.spectroCanvas;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
 
   // 2. Safety Catch: If our backup canvas hasn't been captured yet, create it now
   if (!spectrogramBackupCanvas) {
-    spectrogramBackupCanvas = document.createElement('canvas');
+    spectrogramBackupCanvas = document.createElement("canvas");
     spectrogramBackupCanvas.width = canvas.width;
     spectrogramBackupCanvas.height = canvas.height;
-    const backupCtx = spectrogramBackupCanvas.getContext('2d');
+    const backupCtx = spectrogramBackupCanvas.getContext("2d");
     backupCtx.drawImage(canvas, 0, 0);
   }
 
@@ -354,20 +423,22 @@ function startCursorTracking() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(spectrogramBackupCanvas, 0, 0);
-      
+
       // Rescale only to draw the cursor line matrix
       ctx.scale(dpr, dpr);
-      
-      ctx.strokeStyle = '#ffffff';
+
+      ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
       ctx.shadowBlur = 4;
-      
+
       ctx.beginPath();
       ctx.moveTo(cursorX, 0);
       ctx.lineTo(cursorX, cssH);
       ctx.stroke();
       ctx.restore();
+
+      updateActiveSegmentGlow(currentTime);
     }
 
     // Keep running the loop ONLY if the audio element is playing
@@ -386,274 +457,215 @@ function startCursorTracking() {
 // ─── Segment panels ───────────────────────────────────────────────────────────
 
 function clearSegments() {
-  DOM.segmentsContainer.innerHTML = '';
+  DOM.segmentsContainer.innerHTML = "";
 }
 
 function renderSegments(af) {
-  DOM.segmentsContainer.innerHTML = '';
+  DOM.segmentsContainer.innerHTML = "";
 
-  if (af.segments.length === 0) {
-    DOM.segmentsContainer.innerHTML = '<p style="color:var(--muted);padding:8px">No segments detected.</p>';
-    return;
+  let hasDetections = false;
+  for (const seg of af.segments) {
+    const detectionsToRender = seg.allDetections || [];
+    if (detectionsToRender.length > 0) {
+      hasDetections = true;
+      for (const det of detectionsToRender) {
+        DOM.segmentsContainer.appendChild(buildDetectionRow(af, seg, det));
+      }
+    }
   }
 
-  for (const seg of af.segments) {
-    DOM.segmentsContainer.appendChild(buildSegmentPanel(af, seg));
+  if (!hasDetections) {
+    DOM.segmentsContainer.innerHTML =
+      '<p style="color:var(--muted);padding:8px">No species detected in this file.</p>';
   }
 }
 
-function buildSegmentPanel(af, seg) {
-  console.log(`[UI Debug] Segment ${seg.index} data:`, seg);
+function buildDetectionRow(af, seg, det) {
+  const row = document.createElement("div");
+  row.className = "detection-row-container";
+  row.dataset.seg = seg.index;
+  row.dataset.speciesId = det.labId;
 
-  const panel = document.createElement('div');
-  panel.id = `seg-panel-${seg.index}`;
-  panel.style.cursor = 'pointer'; 
+  // Retrieve existing label for this species in this segment if present
+  const labelObj = seg.labels ? seg.labels[det.labId] : null;
+  const currentLabelValue = labelObj?.labelValue ?? ""; // Default blank
+  const currentNotes = labelObj?.notes ?? ""; // Default blank
 
-  // Ensure state dictionary exists
-  seg.labels = seg.labels || {};
-
-  const det = seg.detection;
-  // Determine which species is active right now in the input form view
-  const defaultLabId = det?.labId ?? 'BACKGROUND';
-  const selectedSp = state.speciesOptions.find(sp => sp.labId === defaultLabId);
-  const defaultDisplayValue = selectedSp ? `${selectedSp.chineseName} (${selectedSp.englishName})` : '';
-  
-  // Track metadata based on the active species selection rather than a global fallback
-  const activeLabelObj = seg.labels[defaultLabId];
-  const currentLabel = activeLabelObj?.labelValue ?? 'True';
-
-  const detectionsToRender = seg.allDetections && seg.allDetections.length > 0 
-    ? seg.allDetections 
-    : (det ? [det] : []);
-
-  // ─── 1. FIXED: Calculate partial completion status and inject [labeled] tags ───
-  let labeledCount = 0;
-  const allDetsHTML = detectionsToRender.map((d, i) => {
-    const displayStr = `${d.chineseName} (${d.englishName})`;
-    const isSpLabeled = !!seg.labels[d.labId];
-    if (isSpLabeled) labeledCount++;
-
-    return `
-      <div class="detection-item" 
-           data-lab-id="${d.labId}" 
-           data-display="${displayStr}"
-           style="margin-bottom: 6px; padding: 6px; background: rgba(0,0,0,0.15); border-radius: 4px; transition: background 0.2s;"
-           onmouseover="this.style.background='rgba(255,255,255,0.1)'"
-           onmouseout="this.style.background='rgba(0,0,0,0.15)'">
-        <div style="display: flex; justify-content: space-between; align-items: center; pointer-events: none;">
-          <span class="det-value" style="font-weight: ${i === 0 ? 'bold' : 'normal'};">
-            ${i === 0 ? '👑 ' : ''}${d.chineseName || '—'}
-            ${isSpLabeled ? '<span class="labeled-badge" style="color:#4caf50; font-size:16px; margin-left:6px; font-weight:bold;">[labeled]</span>' : ''}
-          </span>
-          <span class="det-conf" style="color: ${i === 0 ? '#4caf50' : 'var(--muted)'};">
-            ${(d.confidence * 100).toFixed(1)}%
-          </span>
-        </div>
-        ${d.englishName ? `<div style="font-size:14px;color:var(--muted);margin-top:2px; pointer-events: none;">${d.englishName}  •  <em>${d.scientificName}</em></div>` : ''}
-      </div>
-    `;
-  }).join('');
-
-  // ─── 2. FIXED: Strictly control segment styling & headers by total progress ───
-  const totalToLabel = detectionsToRender.length;
-  const isFullyLabeled = totalToLabel > 0 && labeledCount === totalToLabel;
-  
-  if (isFullyLabeled) {
-    panel.className = 'segment-panel confirmed';
-  } else {
-    panel.className = 'segment-panel';
+  if (currentLabelValue) {
+    row.classList.add("confirmed");
   }
 
-  let statusText = 'Pending';
-  if (isFullyLabeled) statusText = '✓ Confirmed';
-  else if (labeledCount > 0) statusText = `Partial (${labeledCount}/${totalToLabel})`;
+  row.innerHTML = `
+    <div class="detection-row-main">
+      
+      <div class="detection-row-top">
+        <div class="species-col">
+          <div class="species-row-1">
+            <span class="species-ch">${det.chineseName || "—"}</span>
+            <span class="species-conf">${det.confidence}</span>
+            <span class="segment-time-sub">${seg.startSeconds.toFixed(1)}s~${seg.endSeconds.toFixed(1)}s</span>
+          </div>
+          <div class="species-row-2">
+            <span class="species-en">${det.englishName || "—"}</span>
+          </div>
+        </div>
 
-  panel.innerHTML = `
-    <div class="seg-header">
-      <span class="seg-title">Seg ${seg.index + 1}  (${seg.startSeconds.toFixed(1)}s – ${seg.endSeconds.toFixed(1)}s)</span>
-      <span class="seg-status">${statusText}</span>
-    </div>
-
-    <div class="detection-info" style="max-height: 140px; overflow-y: auto; margin-bottom: 12px; border: 1px solid #3e3e5a; border-radius: 4px; padding: 4px;">
-      ${allDetsHTML}
-    </div>
-
-    <div>
-      <label>確認物種 (Confirm species)</label>
-      <input type="text" 
-             class="species-input" 
-             data-seg="${seg.index}" 
-             data-selected-id="${defaultLabId}" 
-             list="species-list" 
-             value="${defaultDisplayValue}" 
-             placeholder="Type to filter species..." 
-             style="width: 100%; padding: 6px; background: #1e1e2f; color: #c5c5d2; border: 1px solid #3e3e5a; border-radius: 4px; font-size: 16px;">
-    </div>
-
-    <div>
-      <label>標記分類 (Label type)</label>
-      <div class="label-switch-group">
-        <button type="button" class="switch-btn ${currentLabel === 'True' ? 'active' : ''}" data-val="True">✓ True</button>
-        <button type="button" class="switch-btn ${currentLabel === 'False' ? 'active' : ''}" data-val="False">✗ False</button>
-        <button type="button" class="switch-btn ${currentLabel === 'Uncertain' ? 'active' : ''}" data-val="Uncertain">? Uncertain</button>
-        <button type="button" class="switch-btn ${currentLabel === 'Bad audio' ? 'active' : ''}" data-val="Bad audio">✗ Bad audio</button>
+        <div class="huge-label-group">
+          <button type="button" class="switch-btn ${currentLabelValue === "True" ? "active" : ""}" data-val="True">✓ True</button>
+          <button type="button" class="switch-btn ${currentLabelValue === "False" ? "active" : ""}" data-val="False">✗ False</button>
+          <button type="button" class="switch-btn ${currentLabelValue === "Uncertain" ? "active" : ""}" data-val="Uncertain">? Uncertain</button>
+          <button type="button" class="switch-btn ${currentLabelValue === "Bad audio" ? "active" : ""}" data-val="Bad audio">✗ Bad audio</button>
+        </div>
       </div>
-    </div>
 
-    <div>
-      <label>備註 (Notes)</label>
-      <input type="text" class="notes-input" placeholder="optional notes…" value="${activeLabelObj?.notes ?? ''}">
-    </div>
+      <div class="detection-row-bottom">
+        <input type="text" class="notes-input" placeholder="備註 Notes (自動儲存 Auto save on blur)" value="${currentNotes}">
+      </div>
 
-    <button class="btn-success confirm-btn" data-file="${af.id}" data-seg="${seg.index}">
-      ${isFullyLabeled ? '✓ Re-confirm' : '✓ Confirm'}
-    </button>
+    </div>
   `;
 
-  // ─── Auto Skip & Play Audio on Panel Click ───────────────────────────
-  panel.addEventListener('click', (e) => {
-    const clickedDetection = e.target.closest('.detection-item');
-    if (clickedDetection) {
-      const targetSpId = clickedDetection.dataset.labId;
-      const input = panel.querySelector('.species-input');
-      
-      // Update targeted attributes
-      input.value = clickedDetection.dataset.display;        
-      input.dataset.selectedId = targetSpId; 
-
-      // ─── 3. FIXED: Dynamically update forms when selecting species items ───
-      const targetLabelData = seg.labels[targetSpId];
-      
-      // Sync Classification buttons state
-      const targetSwitchVal = targetLabelData?.labelValue ?? 'True';
-      panel.querySelectorAll('.label-switch-group .switch-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.val === targetSwitchVal);
-      });
-
-      // Sync Notes element text
-      panel.querySelector('.notes-input').value = targetLabelData?.notes ?? '';
-    }
-
-    // Safety Guard: Don't skip/play if interacting with internal context forms
+  // Play audio on row click (excluding inputs and buttons)
+  row.addEventListener("click", (e) => {
     const targetTagName = e.target.tagName.toLowerCase();
-    if (targetTagName === 'input' || targetTagName === 'button' || e.target.classList.contains('switch-btn')) {
-      return; 
+    if (
+      targetTagName === "input" ||
+      targetTagName === "button" ||
+      e.target.classList.contains("switch-btn")
+    ) {
+      return;
     }
-
     DOM.audioElement.currentTime = seg.startSeconds;
-    DOM.audioElement.play().catch(err => console.warn('Playback block:', err));
+    DOM.audioElement
+      .play()
+      .catch((err) => console.warn("Playback block:", err));
   });
 
-  // ─── System Listeners ─────────────────────────────
-  const input = panel.querySelector('.species-input');
-  
-  // ─── 4. FIXED: Sync forms if the user picks manually via typing datalist ───
-  input.addEventListener('input', () => {
-    const val = input.value.trim();
-    const option = document.querySelector(`#species-list option[value="${val}"]`);
-    const activeId = option ? option.dataset.id : "";
-    input.dataset.selectedId = activeId;
-
-    if (activeId) {
-      const targetLabelData = seg.labels[activeId];
-      const targetSwitchVal = targetLabelData?.labelValue ?? 'True';
-      panel.querySelectorAll('.label-switch-group .switch-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.val === targetSwitchVal);
-      });
-      panel.querySelector('.notes-input').value = targetLabelData?.notes ?? '';
-    }
-  });
-
-  panel.querySelectorAll('.label-switch-group .switch-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  // Switch buttons handler
+  row.querySelectorAll(".switch-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
       e.preventDefault();
-      const group = btn.closest('.label-switch-group');
-      group.querySelectorAll('.switch-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      const group = btn.closest(".huge-label-group");
+      const wasActive = btn.classList.contains("active");
+
+      if (wasActive) {
+        group
+          .querySelectorAll(".switch-btn")
+          .forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      } else {
+        group
+          .querySelectorAll(".switch-btn")
+          .forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      }
+
+      const labelValue = btn.dataset.val;
+      const notesEl = row.querySelector(".notes-input");
+      const notes = notesEl.value.trim();
+
+      await saveLabelForDetection(af, seg, det, labelValue, notes);
     });
   });
 
-  panel.querySelector('.confirm-btn').addEventListener('click', () =>
-    onConfirm(af, seg, panel)
-  );
+  // Notes blur handler
+  const notesInput = row.querySelector(".notes-input");
+  notesInput.addEventListener("blur", async () => {
+    const activeBtn = row.querySelector(".switch-btn.active");
+    let labelValue = activeBtn ? activeBtn.dataset.val : "";
+    const notes = notesInput.value.trim();
 
-  return panel;
+    const existing = seg.labels ? seg.labels[det.labId] : null;
+    const existingLabelValue = existing?.labelValue ?? "";
+    const existingNotes = existing?.notes ?? "";
+
+    if (labelValue || notes) {
+      if (labelValue !== existingLabelValue || notes !== existingNotes) {
+        await saveLabelForDetection(af, seg, det, labelValue, notes);
+      }
+    }
+  });
+
+  return row;
 }
 
-// ─── Confirm handler ──────────────────────────────────────────────────────────
-
-async function onConfirm(af, seg, panel) {
-  const input        = panel.querySelector('.species-input');
-  const activeSwitch = panel.querySelector('.switch-btn.active');
-  const notesEl      = panel.querySelector('.notes-input');
-  const btn          = panel.querySelector('.confirm-btn');
-
-  // Read straight from our hidden state attribute instead of scraping visual strings!
-  let speciesLabId = input.dataset.selectedId;
-
-  // Fallback: If the user didn't fire an input click event but typed an exact matching Chinese name manually
-  if (!speciesLabId) {
-    const manualText = input.value.trim();
-    const found = state.speciesOptions.find(sp => 
-      sp.chineseName === manualText || 
-      `${sp.chineseName} (${sp.englishName})` === manualText
-    );
-    if (found) speciesLabId = found.labId;
-  }
-
-  // Strictly check if the ID is supported inside our backend repository list
-  const isValid = state.speciesOptions.some(sp => sp.labId === speciesLabId);
-  if (!isValid) {
-    alert(`Invalid species: "${input.value}". Please select a valid option from the dropdown.`);
-    return;
-  }
-
-  const labelValue = activeSwitch ? activeSwitch.dataset.val : 'True';
-  const notes      = notesEl.value.trim();
-
-  btn.disabled  = true;
-  btn.textContent = 'Saving…';
-
+async function saveLabelForDetection(af, seg, det, labelValue, notes) {
   try {
     await window.electronAPI.saveLabel({
       audioFilePath: af.id,
-      segmentIndex:  seg.index,
-      speciesLabId, // Transmits the clean target ID ("TW_BAR1") safely to Excel
+      segmentIndex: seg.index,
+      speciesLabId: det.labId,
       notes,
       reviewer: state.reviewer,
       labelValue,
     });
 
     seg.labels = seg.labels || {};
-    seg.labels[speciesLabId] = { speciesLabId, notes, labelValue };
+    seg.labels[det.labId] = { speciesLabId: det.labId, notes, labelValue };
 
-    // Update the isLabeled boolean for the frontend DTO model
-    const detectionsToRender = (seg.allDetections && seg.allDetections.length > 0) ? seg.allDetections : (seg.detection ? [seg.detection] : []);
+    // Update segment's isLabeled state (strictly true ONLY if all detections are labeled)
+    const detectionsToRender = seg.allDetections || [];
     const totalToLabel = detectionsToRender.length;
-    const labeledCount = detectionsToRender.filter(d => !!seg.labels[d.labId]).length;
+    const labeledCount = detectionsToRender.filter(
+      (d) => !!seg.labels[d.labId],
+    ).length;
     seg.isLabeled = totalToLabel > 0 && labeledCount === totalToLabel;
 
-    const newPanel = buildSegmentPanel(af, seg);
-    panel.replaceWith(newPanel);
+    // Visual updates
+    const container = document.querySelector(
+      `.detection-row-container[data-seg="${seg.index}"][data-species-id="${det.labId}"]`,
+    );
+    if (container) {
+      container.classList.add("confirmed");
+    }
 
     renderFileList();
-    
-    // Status text uses clean display names instead of code values
-    const spObj = state.speciesOptions.find(sp => sp.labId === speciesLabId);
-    setStatus(`Saved: ${af.fileName} seg ${seg.index + 1} → ${spObj?.chineseName || speciesLabId} (${labelValue})`);
+
+    setStatus(
+      `Saved: ${af.fileName} seg ${seg.index + 1} (${det.chineseName}) → ${labelValue}`,
+    );
   } catch (err) {
     setStatus(`Save error: ${err.message}`, true);
     console.error(err);
-  } finally {
-    btn.disabled = false;
   }
+}
+
+function onNextAudio() {
+  if (
+    state.activeFileIndex >= 0 &&
+    state.activeFileIndex < state.audioFiles.length - 1
+  ) {
+    selectFile(state.activeFileIndex + 1);
+  }
+}
+
+function updateActiveSegmentGlow(currentTime) {
+  const activeFile = state.audioFiles[state.activeFileIndex];
+  if (!activeFile) return;
+
+  const activeSegmentIndex = Math.floor(currentTime / 3.0);
+  if (activeSegmentIndex === lastActiveSegmentIndex) return;
+  lastActiveSegmentIndex = activeSegmentIndex;
+
+  const rows = DOM.segmentsContainer.querySelectorAll(
+    ".detection-row-container",
+  );
+  rows.forEach((row) => {
+    const segIdx = parseInt(row.dataset.seg, 10);
+    if (segIdx === activeSegmentIndex) {
+      row.classList.add("glow-up");
+      row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else {
+      row.classList.remove("glow-up");
+    }
+  });
 }
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
 function setStatus(msg, isError = false) {
   DOM.statusLeft.textContent = msg;
-  DOM.statusLeft.style.color = isError ? 'var(--danger)' : '';
+  DOM.statusLeft.style.color = isError ? "var(--danger)" : "";
 }
 
 // Re-render spectrogram when window resizes (canvas CSS size changes)
@@ -662,7 +674,7 @@ const resizeObserver = new ResizeObserver(() => {
     const af = state.audioFiles[state.activeFileIndex];
     state.specRenderer.render(
       state.currentAudioBuffer,
-      af.segmentBoundaries ?? computeBoundaries(af)
+      af.segmentBoundaries ?? computeBoundaries(af),
     );
   }
 });

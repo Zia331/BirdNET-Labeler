@@ -141,6 +141,7 @@ export class SpectrogramRenderer {
     this.ctx.scale(dpr, dpr);
     const totalDuration = audioBuffer.duration;
     this._drawBoundaries(segmentBoundaries, totalDuration, cssW, cssH);
+    this._drawTopDurationLabels(totalDuration, cssW, cssH);
 
     if (drawAxes) {
       this._drawFreqAxis(cssW, cssH, sampleRate, binMin, binMax, freqPerBin, usedBins);
@@ -322,13 +323,67 @@ export class SpectrogramRenderer {
     this.ctx.restore();
   }
 
+  _drawTopDurationLabels(totalDuration, w, h) {
+    const segmentLen = 3;
+    const numSegments = Math.ceil(totalDuration / segmentLen);
+
+    this.ctx.save();
+    this.ctx.font = 'bold 13px sans-serif';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+
+    for (let i = 0; i < numSegments; i++) {
+      const tStart = i * segmentLen;
+      const tEnd = Math.min(totalDuration, (i + 1) * segmentLen);
+      
+      const xStart = (tStart / totalDuration) * w;
+      const xEnd = (tEnd / totalDuration) * w;
+      const xMid = (xStart + xEnd) / 2;
+      
+      const startStr = Number.isInteger(tStart) ? `${tStart}` : tStart.toFixed(1);
+      const endStr = Number.isInteger(tEnd) ? `${tEnd}` : tEnd.toFixed(1);
+      const label = `${startStr}s ~ ${endStr}s`;
+      
+      const textWidth = this.ctx.measureText(label).width;
+      const pillW = textWidth + 10;
+      const pillH = 18;
+      const pillX = xMid - pillW / 2;
+      const pillY = 6;
+      
+      this.ctx.fillStyle = 'rgba(18, 18, 30, 0.75)';
+      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      this.ctx.lineWidth = 1;
+      
+      this._roundRect(this.ctx, pillX, pillY, pillW, pillH, 4);
+      this.ctx.fill();
+      this.ctx.stroke();
+      
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      this.ctx.fillText(label, xMid, pillY + pillH / 2 + 0.5);
+    }
+    
+    this.ctx.restore();
+  }
+
+  _roundRect(ctx, x, y, width, height, radius) {
+    if (width < 2 * radius) radius = width / 2;
+    if (height < 2 * radius) radius = height / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + width, y, x + width, y + height, radius);
+    ctx.arcTo(x + width, y + height, x, y + height, radius);
+    ctx.arcTo(x, y + height, x, y, radius);
+    ctx.arcTo(x, y, x + width, y, radius);
+    ctx.closePath();
+  }
+
   _drawFreqAxis(w, h, sampleRate, binMin, binMax, freqPerBin, usedBins) {
     const freqMin = binMin * freqPerBin;
     const freqMax = binMax * freqPerBin;
     const ticks   = this._niceTicks(freqMin, freqMax, 7);
 
     this.ctx.save();
-    this.ctx.font        = '11px monospace';
+    this.ctx.font        = '13px monospace';
     this.ctx.textAlign   = 'left';
 
     for (const hz of ticks) {

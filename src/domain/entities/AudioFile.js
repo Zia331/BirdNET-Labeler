@@ -1,6 +1,6 @@
-'use strict';
+"use strict";
 
-const path = require('path');
+const path = require("path");
 
 /**
  * @domain entities
@@ -16,31 +16,56 @@ class AudioFile {
    * @param {Detection[]} props.detections    - All raw detections for this file
    * @param {number|null} props.durationSeconds - Set after the audio is decoded in the renderer
    */
-  constructor({ filePath, segments = [], detections = [], durationSeconds = null }) {
-    this.filePath         = filePath;
-    this.segments         = segments;
-    this.detections       = detections;
-    this.durationSeconds  = durationSeconds;
+  constructor({
+    filePath,
+    segments = [],
+    detections = [],
+    durationSeconds = null,
+    metadata = null,
+  }) {
+    this.filePath = filePath;
+    this.segments = segments;
+    this.detections = detections;
+    this.durationSeconds = durationSeconds;
+    this.metadata = metadata || {
+      siteCode: "",
+      siteName: "",
+      recordedTime: "",
+    };
   }
 
   /** Primary key / aggregate root ID. */
-  get id()       { return this.filePath; }
-  get fileName() { return path.basename(this.filePath); }
+  get id() {
+    return this.filePath;
+  }
+  get fileName() {
+    return path.basename(this.filePath);
+  }
 
-  get totalSegments()     { return this.segments.length; }
-  get labeledSegments()   { return this.segments.filter(s => s.isLabeled).length; }
-  get isFullyLabeled()    { return this.labeledSegments === this.totalSegments; }
-  get progressPercent()   { return this.totalSegments === 0 ? 0 : Math.round(this.labeledSegments / this.totalSegments * 100); }
+  get totalSegments() {
+    return this.segments.length;
+  }
+  get labeledSegments() {
+    return this.segments.filter((s) => s.isLabeled).length;
+  }
+  get isFullyLabeled() {
+    return this.labeledSegments === this.totalSegments;
+  }
+  get progressPercent() {
+    return this.totalSegments === 0
+      ? 0
+      : Math.round((this.labeledSegments / this.totalSegments) * 100);
+  }
 
   /** Segment boundaries that need dotted-line markers on the spectrogram. */
   get segmentBoundaries() {
     return this.segments
-      .slice(1)                            // skip the first (no boundary before segment 0)
-      .map(s => s.startSeconds);
+      .slice(1) // skip the first (no boundary before segment 0)
+      .map((s) => s.startSeconds);
   }
 
   segmentAt(index) {
-    return this.segments.find(s => s.index === index) ?? null;
+    return this.segments.find((s) => s.index === index) ?? null;
   }
 }
 

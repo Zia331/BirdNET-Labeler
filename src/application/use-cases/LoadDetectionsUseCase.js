@@ -1,22 +1,31 @@
-'use strict';
+"use strict";
 
-const path      = require('path');
-const fs        = require('fs');
-const AudioFile = require('../../domain/entities/AudioFile');
-const Segment   = require('../../domain/entities/Segment');
+const path = require("path");
+const fs = require("fs");
+const AudioFile = require("../../domain/entities/AudioFile");
+const Segment = require("../../domain/entities/Segment");
 
-const SEGMENT_DURATION = 3; 
+const SEGMENT_DURATION = 3;
 
 class LoadDetectionsUseCase {
-  constructor({ detectionRepository, mappingService, labelRepository, speciesRepository }) {
-    this._repo    = detectionRepository;
+  constructor({
+    detectionRepository,
+    mappingService,
+    labelRepository,
+    speciesRepository,
+    audioFilenameMetadataService,
+  }) {
+    this._repo = detectionRepository;
     this._mapping = mappingService;
-    this._labels  = labelRepository;
+    this._labels = labelRepository;
     this._species = speciesRepository;
+    this._metadataService = audioFilenameMetadataService;
   }
 
   async execute({ csvPath, audioBasePath, excelPath }) {
-    const safeAudioBasePath = audioBasePath ? path.normalize(audioBasePath) : null;
+    const safeAudioBasePath = audioBasePath
+      ? path.normalize(audioBasePath)
+      : null;
     const safeCsvPath = path.normalize(csvPath);
 
     let rawRows = [];
@@ -24,14 +33,17 @@ class LoadDetectionsUseCase {
 
     // FEATURE: Support BOTH batch folder scanning AND single file loading
     if (pathStat.isDirectory()) {
-      console.log(`[UseCase] Scanning directory for detection tables: ${safeCsvPath}`);
+      console.log(
+        `[UseCase] Scanning directory for detection tables: ${safeCsvPath}`,
+      );
       const files = fs.readdirSync(safeCsvPath);
-      
+
       // Target both format styles inside the folder loop
-      const tableFiles = files.filter(f => 
-        f.endsWith('.BirdNET.selection.table.txt') || 
-        f.endsWith('.csv') || 
-        f.endsWith('.txt')
+      const tableFiles = files.filter(
+        (f) =>
+          f.endsWith(".BirdNET.selection.table.txt") ||
+          f.endsWith(".csv") ||
+          f.endsWith(".txt"),
       );
 
       for (const file of tableFiles) {
@@ -40,7 +52,10 @@ class LoadDetectionsUseCase {
           const rows = await this._repo.parseFromCsv(fullTablePath);
           rawRows = rawRows.concat(rows);
         } catch (fileErr) {
-          console.warn(`[UseCase] Skipping unparseable file ${file}:`, fileErr.message);
+          console.warn(
+            `[UseCase] Skipping unparseable file ${file}:`,
+            fileErr.message,
+          );
         }
       }
     } else {
@@ -49,23 +64,32 @@ class LoadDetectionsUseCase {
     }
 
     // Resolve absolute paths securely
-    const resolvedRows = rawRows.map(row => {
+    const resolvedRows = rawRows.map((row) => {
       let resolvedPath = row.filePath;
-      
+
       if (safeAudioBasePath) {
         const fileName = path.basename(row.filePath);
-        const directPath = path.normalize(path.join(safeAudioBasePath, fileName));
+        const directPath = path.normalize(
+          path.join(safeAudioBasePath, fileName),
+        );
 
         if (!directPath.startsWith(safeAudioBasePath)) {
-          console.warn(`[Security Alert] Blocked directory traversal attempt: ${row.filePath}`);
-          return { ...row, filePath: null }; 
+          console.warn(
+            `[Security Alert] Blocked directory traversal attempt: ${row.filePath}`,
+          );
+          return { ...row, filePath: null };
         }
 
         if (fs.existsSync(directPath)) {
           resolvedPath = directPath;
         } else if (!path.isAbsolute(row.filePath)) {
-          const relativePath = path.normalize(path.join(safeAudioBasePath, row.filePath));
-          if (relativePath.startsWith(safeAudioBasePath) && fs.existsSync(relativePath)) {
+          const relativePath = path.normalize(
+            path.join(safeAudioBasePath, row.filePath),
+          );
+          if (
+            relativePath.startsWith(safeAudioBasePath) &&
+            fs.existsSync(relativePath)
+          ) {
             resolvedPath = relativePath;
           } else {
             resolvedPath = directPath;
@@ -74,16 +98,18 @@ class LoadDetectionsUseCase {
           resolvedPath = directPath;
         }
       } else if (!path.isAbsolute(row.filePath)) {
-        resolvedPath = path.normalize(path.join(safeAudioBasePath || '', row.filePath));
+        resolvedPath = path.normalize(
+          path.join(safeAudioBasePath || "", row.filePath),
+        );
       }
-      
+
       return {
         ...row,
         filePath: resolvedPath,
       };
     });
 
-    const filteredRows = resolvedRows.filter(row => row.filePath !== null);
+    const filteredRows = resolvedRows.filter((row) => row.filePath !== null);
     const grouped = this._mapping.mapAndGroup(filteredRows);
 
     let existingLabels = new Map();
@@ -94,15 +120,31 @@ class LoadDetectionsUseCase {
           existingLabels = await this._labels.loadExistingLabels(safeExcelPath);
         }
       } catch (err) {
-        console.warn('[LoadDetectionsUseCase] Failed to load existing labels:', err.message);
+        console.warn(
+          "[LoadDetectionsUseCase] Failed to load existing labels:",
+          err.message,
+        );
       }
     }
 
     const audioFiles = [];
 
     for (const [filePath, detections] of grouped) {
-      const segments = this._buildSegments(detections, filePath, existingLabels);
-      audioFiles.push(new AudioFile({ filePath, segments, detections }));
+      const segments = this._buildSegments(
+        detections,
+        filePath,
+        existingLabels,
+      );
+      const metadata = this._metadataService?.parse(
+        path.basename(filePath),
+      ) || {
+        siteCode: "",
+        siteName: "",
+        recordedTime: "",
+      };
+      audioFiles.push(
+        new AudioFile({ filePath, segments, detections, metadata }),
+      );
     }
 
     // Stable alphabetical sort by filename in sidebar menu
@@ -115,22 +157,22 @@ class LoadDetectionsUseCase {
   _buildSegments(detections, filePath, existingLabels) {
     // ─── FIX 1: Extract fileName from filePath ───
     const fileName = path.basename(filePath);
-    
+
     // 1. Group the raw detections by segment index
     const byIndex = new Map();
-    const SEGMENT_DURATION = 3.0; 
+    const SEGMENT_DURATION = 3.0;
 
     // ─── FIX 2: Loop over 'detections' (the passed argument) ───
-    detections.forEach(det => {
+    detections.forEach((det) => {
       // NOTE: Make sure 'startSeconds' matches your parsed CSV object key!
       // If your CSV parser uses 'beginTime' instead, change it to det.beginTime
-      const index = Math.floor(det.startSeconds / SEGMENT_DURATION); 
-      
+      const index = Math.floor(det.startSeconds / SEGMENT_DURATION);
+
       if (!byIndex.has(index)) {
         byIndex.set(index, []);
       }
       // Push EVERY detection for this time block into the array
-      byIndex.get(index).push(det); 
+      byIndex.get(index).push(det);
     });
 
     const segments = [];
@@ -140,13 +182,13 @@ class LoadDetectionsUseCase {
       // Sort from highest confidence to lowest
       const sortedDets = [...dets].sort((a, b) => b.confidence - a.confidence);
       const best = sortedDets[0]; // Primary detection
-      
+
       const segment = new Segment({
-        index:        idx,
+        index: idx,
         startSeconds: idx * SEGMENT_DURATION,
-        endSeconds:   (idx + 1) * SEGMENT_DURATION,
-        detection:    best,
-        allDetections: sortedDets 
+        endSeconds: (idx + 1) * SEGMENT_DURATION,
+        detection: best,
+        allDetections: sortedDets,
       });
 
       segment.allDetections = sortedDets;
@@ -155,26 +197,27 @@ class LoadDetectionsUseCase {
       const key = `${fileName}_${idx}`;
       const existingList = existingLabels ? existingLabels.get(key) : null;
       if (existingList && existingList.length > 0) {
-        const Label = require('../../domain/entities/Label');
-        existingList.forEach(existing => {
-          const specificDet = sortedDets.find(d => d.labId === existing.speciesLabId) || best;
-          
+        const Label = require("../../domain/entities/Label");
+        existingList.forEach((existing) => {
+          const specificDet =
+            sortedDets.find((d) => d.labId === existing.speciesLabId) || best;
+
           const label = new Label({
-            audioFileName:         fileName,
-            audioFilePath:         filePath,
-            segmentIndex:          idx,
-            startSeconds:          idx * SEGMENT_DURATION,
-            endSeconds:            (idx + 1) * SEGMENT_DURATION,
-            speciesLabId:          existing.speciesLabId,
-            speciesChineseName:    existing.speciesChineseName,
-            speciesEnglishName:    existing.speciesEnglishName,
+            audioFileName: fileName,
+            audioFilePath: filePath,
+            segmentIndex: idx,
+            startSeconds: idx * SEGMENT_DURATION,
+            endSeconds: (idx + 1) * SEGMENT_DURATION,
+            speciesLabId: existing.speciesLabId,
+            speciesChineseName: existing.speciesChineseName,
+            speciesEnglishName: existing.speciesEnglishName,
             speciesScientificName: existing.speciesScientificName,
-            detectedEBirdCode:     specificDet.ebirdCode || '',
-            detectedConfidence:    specificDet.confidence || 0,
-            labelValue:            existing.labelValue,
-            notes:                 existing.notes,
-            reviewer:              existing.reviewer,
-            timestamp:             existing.timestamp,
+            detectedEBirdCode: specificDet.ebirdCode || "",
+            detectedConfidence: specificDet.confidence || 0,
+            labelValue: existing.labelValue,
+            notes: existing.notes,
+            reviewer: existing.reviewer,
+            timestamp: existing.timestamp,
           });
           segment.confirm(label);
         });

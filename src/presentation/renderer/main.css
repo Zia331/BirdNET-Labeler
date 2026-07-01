@@ -55,7 +55,9 @@ body {
 }
 
 #reviewer-input {
-  width: 120px;
+  min-width: 120px;
+  max-width: fit-content;
+  font-size: 16px;;
 }
 
 /* ── Layout ───────────────────────────────────────────────────────────────── */
@@ -146,6 +148,29 @@ body {
   pointer-events: none;
 }
 
+.spectrogram-metadata {
+  display: none;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 4px 2px 0;
+  color: rgb(199, 199, 199);
+  font-size: 24px;
+  font-weight: 300;
+  min-height: 20px;
+  align-items: center;
+}
+
+.spectrogram-metadata .meta-item {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.spectrogram-metadata strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 /* ── Audio controls ───────────────────────────────────────────────────────── */
 #audio-controls {
   display: flex;
@@ -172,72 +197,152 @@ body {
   padding-right: 12px; /* Give the scrollbar some breathing room */
 }
 
-/* Style configuration to widen your segment panel cards */
-.segment-panel {
-  width: 100%;          /* Fluid sizing: fills 100% of the wider #segments-container */
-  
-  /* OPTIONAL alternative: If you want a fixed wide layout rather than fluid, 
-     uncomment the line below and tune to your preferred pixel layout width: */
-  /* width: 460px; */
-
-  box-sizing: border-box;
-  padding: 16px;        /* Increases layout breathability inside the card */
-  border-radius: 6px;
-  margin-bottom: 4px;
-}
-
-.segment-panel.confirmed {
-  border-color: var(--success);
-}
-
-.segment-panel .seg-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.segment-panel .seg-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.segment-panel .seg-status {
-  font-size: 14px;
-  color: var(--muted);
-}
-.segment-panel.confirmed .seg-status { color: var(--success); font-weight: 600; }
-
-.segment-panel .detection-info {
-  background: rgba(0,0,0,.25);
-  border-radius: 4px;
-  padding: 6px 8px;
-  font-size: 14px;
-}
-.segment-panel .detection-info .det-label { color: var(--muted); }
-.segment-panel .detection-info .det-value { font-weight: 500; }
-.segment-panel .detection-info .det-conf  { color: var(--warn); float: right; }
-
-.segment-panel label {
-  font-size: 14px;
-  color: var(--muted);
-  display: block;
-  margin-bottom: 2px;
-}
-
-.segment-panel select,
-.segment-panel input[type="text"] {
+/* ── Detection Row Container (Flat layout) ────────────────────────────────── */
+.detection-row-container {
   width: 100%;
-  font-size: 16px;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  position: relative;
 }
 
-.segment-panel .confirm-btn {
-  margin-top: 4px;
+.detection-row-container:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: #22223a;
 }
 
+.detection-row-container.confirmed {
+  border-color: rgba(62, 207, 116, 0.4);
+  background: rgba(62, 207, 116, 0.04);
+}
+
+.detection-row-container.confirmed:hover {
+  background: rgba(62, 207, 116, 0.07);
+}
+
+/* Glow highlight for the currently active playback segment */
+.detection-row-container.glow-up {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 14px rgba(91, 141, 238, 0.45);
+  background: linear-gradient(135deg, rgba(91, 141, 238, 0.18) 0%, rgba(28, 28, 48, 0.9) 100%) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Main Layout Structuring ─────────────────────────────── */
+.detection-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* Vertical gap between the top row and notes row */
+  width: 100%;
+}
+
+.detection-row-top {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+}
+
+.detection-row-bottom {
+  width: 100%;
+}
+
+/* ── Left: Stacked Species Information ───────────────────── */
+.species-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 260px;
+  flex-shrink: 0;
+}
+
+.species-row-1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.species-ch { font-weight: 700; font-size: 24px; color: var(--text); }
+.species-conf { color: var(--warn); font-weight: 600; font-size: 20px; }
+
+.species-row-2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; 
+  gap: 10px;
+}
+.species-en { font-size: 20px; color: var(--muted); }
+
+.species-sci { font-size: 16px; font-style: italic; color: #8e94b5; }
+.segment-time-sub { font-size: 18px; color: var(--muted); font-family: var(--font-mono); }
+
+/* ── Right (Top Row): Huge Label Group with Inner Borders ── */
+.huge-label-group {
+  display: flex;
+  flex: 1;
+  min-width: 450px;
+  background: #090909;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  overflow: hidden; 
+  height: 6rem;
+}
+
+.huge-label-group button.switch-btn {
+  flex: 1;
+  padding: 14px 8px; 
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 24px;
+  border: none;
+  border-radius: 0; 
+  border-right: 1px solid rgba(255, 255, 255, 0.5); 
+  transition: background 0.15s, color 0.15s;
+}
+
+.huge-label-group button.switch-btn:last-child {
+  border-right: none;
+}
+
+.huge-label-group button.switch-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.huge-label-group button.switch-btn.active[data-val="True"] { background: var(--success); color: #0a1a10; }
+.huge-label-group button.switch-btn.active[data-val="False"] { background: var(--danger); color: #fff; }
+.huge-label-group button.switch-btn.active[data-val="Uncertain"] { background: var(--warn); color: #0a1a10; }
+.huge-label-group button.switch-btn.active[data-val="Bad audio"] { background: var(--muted); color: #0a1a10; }
+
+/* ── Bottom Row: Notes Input ─────────────────────────────── */
+.notes-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  font-size: 20px;
+  line-height: 1.5;
+  background: #1a1a2e;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 4px;
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s;
+}
+
+.notes-input:focus {
+  border-color: var(--accent);
+}
 /* ── Buttons & inputs ─────────────────────────────────────────────────────── */
 button {
-  padding: 5px 12px;
+  padding: 8px 16px;
   border: none;
   border-radius: var(--radius);
   cursor: pointer;
@@ -298,6 +403,7 @@ select option { background: #1a1a2e; }
   padding: 2px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
+  min-w
 }
 
 .label-switch-group button.switch-btn {
